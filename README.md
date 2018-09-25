@@ -1,11 +1,11 @@
 # check_timed_logs_fast
 
-*Project Status:* It works, I'm working on adding more text and structuring
-it better.
+_Project Status:_ It works, I'm working on adding more tests and structuring
+the code better.
 
 This is a blazingly fast reimplementation of the [check_timed_logs](https://exchange.nagios.org/directory/Plugins/Log-Files/check_timed_logs/details)
 nagios plugin in Rust (the original is in Perl). The API stayed the same,
-so you can just replace the original.
+so you can just replace the original perl script with the binary.
 
 The purpose of the plugin is to monitor log files and alert if there
 are more than X occurrences of a regex in the last Y minutes (e.g. more
@@ -26,7 +26,7 @@ Follows.
 ## Performance
 
 |                   | 1.2M      | 37M        | 5.7G       |
-| ------------------------------------------------------- |
+| ------------------|-----------|------------|----------- |
 | Original          | 0.878 sec | 20.287 sec | >30 min    |
 | Rust Rewrite      | 0.031 sec | 0.676 sec  | 83.088 sec |
 | Improvement       | 96.4 %    | 96.6   %   |            |
@@ -44,8 +44,8 @@ file backwards. At the moment the implementation is pretty straight forward
 I suspect that there is room for more improvement and would like to implement
 two additional strategies:
 
-	* 1) split work into worker threads
-	* 2) asynchronous processing and if possible asynchronous syscalls.
+1. split work into worker threads
+2. asynchronous processing and if possible asynchronous syscalls.
 
 Furthermore, I know for sure (because I benchmarked it) that the fancy-regex
 crate is a limiting factor. The regex crate had better performance, but doesn't
