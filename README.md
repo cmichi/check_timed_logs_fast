@@ -36,13 +36,14 @@ Follows.
 
 Performance differs for complex regular expressions.
 
-I did the benchmarks using
+I did the benchmarks using the following command on a high performance server
+(which shouldn't really matter since only one core is utilized and the RAM
+fingerprint is low).
 
 	perf stat
 		-r 10
 		-d ./check_timed_logs_fast -pattern '.*nonExistentPattern.*' -i 9999999 -c 1 -logfile ./log
 
-on a high performance server.
 The command executed the check ten times and parsed the entire file, the
 average execution time was the duration in the above table.
 
