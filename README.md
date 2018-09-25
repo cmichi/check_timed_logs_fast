@@ -17,8 +17,8 @@ two minutes).
 
 In the company where I work we had problems with very large and verbose
 log files. The plugin took a long time for parsing and nagios times out
-after a few seconds of getting no reaction — this then falsely shows a
-critical incident in monitoring.
+after a few seconds of getting no reaction from a check — this
+then falsely shows up as a critical incident in monitoring.
 
 
 ## Installation
@@ -28,24 +28,27 @@ Follows.
 
 ## Performance
 
-|                   | 1.2M      | 37M        | 5.7G       |
+| Log File Size     | 1.2M      | 37M        | 5.7G       |
 | ------------------|-----------|------------|----------- |
 | Original          | 0.878 sec | 20.287 sec | >30 min    |
 | Rust Rewrite      | 0.031 sec | 0.676 sec  | 83.088 sec |
-| Improvement       | 96.4 %    | 96.6   %   |            |
+| Improvement       | 96.4 %    | 96.6 %     |            |
 
-Performance differs for complex regular expressions.
+These metrics provide only a rough idea, I haven't looked in detail
+at the exact difference in RAM usage (it doesn't seem to have increased
+though). The performance is also dependent on the complexity of the
+regular expression.
 
 I did the benchmarks using the following command on a high performance server
-(which shouldn't really matter since only one core is utilized and the RAM
-fingerprint is low).
+(which shouldn't really matter since only one core is utilized anyway and the
+RAM fingerprint is low).
 
 	perf stat
 		-r 10
 		-d ./check_timed_logs_fast -pattern '.*nonExistentPattern.*' -i 9999999 -c 1 -logfile ./log
 
-The command executed the check ten times and parsed the entire file, the
-average execution time was the duration in the above table.
+The command executs the check ten times and parses the entire file, the
+resulting average execution time is the duration in the table above.
 
 The crazy rate of improvement comes from Rust and using `memmap` to read the
 file backwards. At the moment the implementation is pretty straight forward
