@@ -15,10 +15,11 @@ are more than X occurrences of a regex in the last Y minutes (e.g. more
 than one exception in the last minute or more than 5 warnings in the last
 two minutes).  
 
-In the company where I work we had problems with very large and verbose
-log files. The plugin took a long time for parsing and nagios times out
-after a few seconds of getting no reaction from a check — this
-then falsely shows up as a critical incident in monitoring.
+This rewrite was caused because of problems which occur with very large
+and verbose log files. The original plugin takes a long time for parsing
+and nagios times out after a few seconds of getting no reaction from a
+check — this then falsely shows up as a critical incident in
+monitoring.
 
 
 ## Installation
