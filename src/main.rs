@@ -8,6 +8,7 @@ fn main() {
 }
 
 fn print_usage(program: &str) {
+  // TODO improve multi-line string
   let brief = format!("Usage: {}
   -pattern <regex-pattern>
   -logfile <path to log file>
@@ -47,8 +48,9 @@ fn print_version() {
 
 }
 
-// the ugly parsing is because the original plugin uses `-` instead of `--`
-// for the flags. the getopts crate e.g. only supports `--`.
+// the selfmade parsing is necessary because the original plugin
+// uses `-` instead of `--` for the flags. the getopts crate though
+// only supports `--`.
 fn parse() -> Config {
   let mut interval_to_check: u64 = 0;
   let mut search_pattern: String = String::from("");
