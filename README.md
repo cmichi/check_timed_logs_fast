@@ -33,22 +33,27 @@ Follows.
 
 Performance differs for complex regular expressions.
 
-I did the benchmarks using `perf stat -r 10 -d ./check_timed_logs_fast -pattern '.*nonExistentPattern.*' -i 9999999 -c 1 -logfile ./…`
+I did the benchmarks using
+
+	perf stat
+		-r 10
+		-d ./check_timed_logs_fast -pattern '.*nonExistentPattern.*' -i 9999999 -c 1 -logfile ./log
+
 on a high performance server.
 The command executed the check ten times and parsed the entire file, the
-average execution time was the number in the table.
+average execution time was the duration in the above table.
 
 The crazy rate of improvement comes from Rust and using `memmap` to read the
 file backwards. At the moment the implementation is pretty straight forward
--- one process which blocks with the i/o operations and the parsing.
+— one process which blocks with the i/o operations and the parsing.
 I suspect that there is room for more improvement and would like to implement
 two additional strategies:
 
 1. split work into worker threads
 2. asynchronous processing and if possible asynchronous syscalls.
 
-Furthermore, I know for sure (because I benchmarked it) that the fancy-regex
-crate is a limiting factor. The regex crate had better performance, but doesn't
+Furthermore, I know for sure (because I benchmarked it) that the `fancy-regex`
+crate is a slowing factor. The `regex` crate had better performance, but doesn't
 support advanced regex features like e.g. look-ahead. Since I want to stay
 compatible to the original `check_timed_logs` script I have to use a (slower)
 crate which supports these features.
