@@ -1,5 +1,8 @@
 # check_timed_logs_fast
 
+[![Build Status](https://travis-ci.org/cmichi/check_timed_logs_fast.svg?branch=master)](https://travis-ci.org/cmichi/check_timed_logs_fast)
+[![codecov](https://codecov.io/gh/cmichi/check_timed_logs_fast/branch/master/graph/badge.svg)](https://codecov.io/gh/cmichi/check_timed_logs_fast)
+
 __Project Status:__ It works, I'm working on adding more tests and structuring
 the code better.
 
