@@ -4,7 +4,6 @@ extern crate time;
 extern crate glob;
 extern crate fancy_regex;
 
-use std::process::exit;
 use std::fs::File;
 use std::str;
 use memmap::Mmap;
@@ -16,18 +15,18 @@ use std::fs;
 use glob::glob;
 
 pub struct Config {
-  interval_to_check: u64,
-  search_pattern: String, // TODO probably no longer necessary? or still used in prints?
-  filename: String,
+  pub interval_to_check: u64,
+  pub search_pattern: String, // TODO probably no longer necessary? or still used in prints?
+  pub filename: String,
 
   // TODO is usize sufficient?
-  max_critical_matches: u64,
-  max_warning_matches: u64,
-  date_pattern: String,
-  timeposition: usize,
-  debug: bool,
-  verbose: bool,
-  re: Regex,
+  pub max_critical_matches: u64,
+  pub max_warning_matches: u64,
+  pub date_pattern: String,
+  pub timeposition: usize,
+  pub debug: bool,
+  pub verbose: bool,
+  pub re: Regex,
 }
 
 impl Config {
@@ -38,11 +37,17 @@ impl Config {
 
     max_critical_matches: u64,
     max_warning_matches: u64,
-    date_pattern: String,
+    mut date_pattern: String,
     timeposition: usize,
     debug: bool,
     verbose: bool,
   ) -> Config {
+    // TODO the validation should go here and not in the parser
+
+    if date_pattern.len() == 0 {
+      date_pattern = String::from("%Y-%m-%d %H:%M:%S");
+    }
+
     Config {
       interval_to_check,
       search_pattern: search_pattern.to_owned(),
@@ -54,7 +59,7 @@ impl Config {
       timeposition,
       debug,
       verbose,
-      re: Regex::new(&search_pattern.to_owned()).unwrap(),
+      re: Regex::new(&search_pattern.to_owned()).expect("regex cannot be created"),
     }
   }
 }
@@ -78,8 +83,8 @@ fn get_oldest_allowed_local_ts(conf: &Config, now: std::time::SystemTime) -> u64
   get_timestamp_from_local(adjusted_date)
 }
 
-pub fn run(conf: &Config) {
-  let mut files_matched = 0;
+pub fn run(conf: &Config) -> Result<(u64, u64), String> {
+  let mut files_processed = 0;
   let mut exp = conf.filename.to_owned();
   let star = String::from("*");
   exp.push_str(&star);
@@ -107,9 +112,7 @@ pub fn run(conf: &Config) {
   for entry in glob(&exp).expect("failed to read glob pattern") {
     match entry {
       Ok(path) => {
-        files_matched += 1;
-
-        let p = path.to_str().unwrap();
+        let p = path.to_str().expect("path not available");
         /*
         // TODO this is dangerous, since we don't check if it actually is a suffix
         if p.contains(".gz") {
@@ -128,63 +131,50 @@ pub fn run(conf: &Config) {
         }
 
         if p == "-" {
-          panic!("ERROR: stdin as path is not supported");
+          return Err("stdin as path is not supported".to_owned());
         }
 
         let local_matches = process_file(p, &conf, whitespaces_in_date, oldest_ts);
-        matches += local_matches;
+        match local_matches {
+          Ok(matches_in_file) => {
+            files_processed += 1;
+            matches += matches_in_file;
+          },
+          Err((err, matches_in_file)) => {
+            matches += matches_in_file;
+            continue; // typically because of non-ascii file
+          }
+        }
       },
       Err(e) => eprintln!("ERROR: {:?}", e),
     }
   }
-
-  if matches >= conf.max_critical_matches {
-    eprintln!("CRITICAL - There are {} instances of \"{}\" in the last {} minutes",
-              matches, conf.search_pattern, conf.interval_to_check);
-    exit(1);
-  }
-
-  if matches >= conf.max_warning_matches {
-    eprintln!("WARNING - There are {} instances of \"{}\" in the last {} minutes",
-              matches, conf.search_pattern, conf.interval_to_check);
-    exit(1);
-  }
-
-  if files_matched == 0 {
-    eprintln!("UNKNOWN - There were no files matching the passed filename: \"{}\"",
-              conf.filename);
-    exit(3);
-  }
-
-  println!("OK - There are only {} instances of \"{}\" in the last {} minutes - Warning threshold is {:?}",
-           matches, conf.search_pattern, conf.interval_to_check, conf.max_warning_matches);
-  exit(0);
+  Ok((matches, files_processed))
 }
 
-
-fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts: u64) -> u64 {
+fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts: u64) -> Result<u64, (String, u64)> {
   let mmap;
   let mut matches = 0;
 
-  let file_in = File::open(path).unwrap();
-  let metadata = file_in.metadata().unwrap();
+  let file_in = File::open(path).expect("cannot open file");
+  let metadata = file_in.metadata().expect("cannot get metadata");
   if !metadata.is_file() {
       if conf.debug {
         eprintln!("{} is not a file", path);
       }
-      return 0;
+      return Err(("not a file".to_owned(), 0));
   } else if metadata.len() > isize::max_value() as u64 {
-    eprintln!("the file {} is too large to be safely mapped to memory: 
-               https://github.com/danburkert/memmap-rs/issues/69", path);
+    panic!("the file {} is too large to be safely mapped to memory:
+            https://github.com/danburkert/memmap-rs/issues/69", path);
   } else if metadata.len() == 0 {
     if conf.debug {
       eprintln!("{} is empty", path);
     }
-    return 0;
+    return Err(("file empty".to_owned(), 0));
   } 
 
   let (file, len) = {
-    mmap = Mmap::open_path(path, memmap::Protection::Read).unwrap();
+    mmap = Mmap::open_path(path, memmap::Protection::Read).expect("cannot memmap");
     let bytes = unsafe { mmap.as_slice() };
     (bytes, mmap.len())
   };
@@ -193,17 +183,25 @@ fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts
   let mut index = last_printed - 1;
   while index >= -1 {
     if index == -1 || file[index as usize] == '\n' as u8 {
-      let drin = process_line(&file[(index + 1) as usize..last_printed as usize],
-                              whitespaces_in_date, oldest_ts, &conf);
-      match drin {
+      let line = &file[(index + 1) as usize..last_printed as usize];
+      let is_match = process_line(line, whitespaces_in_date, oldest_ts, &conf);
+      match is_match {
         Ok(v) => {
           if v {
             matches += 1;
           }
         },
-        Err(_) => {
-          // if error because of ascii file, then just skip without outputting error
-          break;
+        Err(err) => {
+          if conf.debug {
+            eprintln!("ERROR while searching the file {}: {}
+                      There were {} matches until the error appeared.", path, err, matches);
+          }
+
+          // an error typically occurs because of trying to parse a binary file
+          // or because the timestamp of the line is too old. if something more
+          // serious would have happened we would already have panicked.
+          //return Err((err, matches));
+          return Ok(matches);
         }
       }
 
@@ -213,14 +211,73 @@ fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts
     index -= 1;
   }
 
-  matches
+  Ok(matches)
+}
+
+// TODO maybe better return Option<bool, None>, would be more semantically fitting
+fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, conf: &Config) -> Result<bool, String> {
+  if bytes.len() == 0 {
+    return Ok(false);
+  }
+
+  let l = str::from_utf8(bytes);
+  if l.is_err() {
+      if conf.debug {
+        eprintln!("skipping file because not utf8 parseable!");
+      }
+      return Err("file not utf8".to_owned());
+  }
+  let line = l.unwrap().trim();
+  if line.len() == 0 {
+    return Ok(false);
+  }
+
+  if conf.debug {
+    println!("processing line: {}", line);
+  }
+
+  let split: Vec<&str> = line.split_whitespace().collect();
+  let datefields_ = split.get(conf.timeposition..whitespaces_in_datefields);
+  let datefields;
+  match datefields_ {
+    None => return Ok(false),
+    Some(fields) => {
+      datefields = fields.join(" ");
+    }
+  };
+
+  let comma_pos = datefields.find(',').unwrap_or(datefields.len());
+  let (before_comma, _) = datefields.split_at(comma_pos);
+
+  let date = parse_date(&before_comma, &conf.date_pattern);
+  match date {
+    None => Ok(false),
+    Some(date) => {
+      if conf.debug {
+        println!("parsed {} to date {}", datefields, date);
+      }
+
+      let ts_line = get_timestamp(date);
+      if oldest_ts > ts_line {
+        return Err("timestamp in line too old".to_owned());
+      }
+
+      let is_match = conf.re.captures_from_pos(&line, 0).unwrap();
+      let is_match = is_match.is_some();
+      if is_match && conf.verbose {
+        // no println, "\n" is already contained in line
+        print!("{}", line);
+      }
+      Ok(is_match)
+    }
+  }
 }
 
 // checks if the file age is >= now - interval_to_check
 fn check_file_age(conf: &Config, path: &str) -> bool {
   let secs_allowed = conf.interval_to_check * 60;
 
-  let attr = fs::metadata(&path).unwrap();
+  let attr = fs::metadata(&path).expect("cannot get metadata");
   let last_modified = attr.modified().unwrap();
   let elapsed_secs = last_modified.elapsed().unwrap().as_secs();
 
@@ -245,10 +302,10 @@ fn adjust_to_local_tz(date: NaiveDateTime) -> DateTime<chrono::Local> {
 }
 
 fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
-  // if does not start with 4 digits then return None
   let p = match Utc.datetime_from_str(&datefields, pattern) {
     Ok(v) => v,
     Err(e) => {
+      println!("trying to fix error");
       // there are a few things we can try to fix the error
       let err_desc = e.to_string();
       if err_desc == "trailing input" {
@@ -272,7 +329,9 @@ fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
         Err(_) => {
           // a typical reason for not being able to parse the date is that
           // there is a stacktrace which spans multiple lines in the log
-          //eprintln!("This error appeared when parsing the date in the log file with the provided pattern: {:?}. The date fields: {:?}, the pattern: {:?}.", e, datefields, pattern);
+          // eprintln!("This error appeared when parsing the date in the log
+          //            file with the provided pattern: {:?}. The date fields:
+          //            {:?}, the pattern: {:?}.", e, datefields, pattern);
           return None;
         },
       }
@@ -290,64 +349,37 @@ fn get_timestamp(date: DateTime<chrono::Utc>) -> u64 {
   date.naive_local().timestamp() as u64
 }
 
-fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, conf: &Config) -> Result<bool, ()> {
-  if bytes.len() == 0 {
-    return Ok(false);
-  }
-
-  let l = str::from_utf8(bytes);
-  if l.is_err() {
-      if conf.debug {
-        //eprintln!("skipping file because not ascii!");
-        // TODO return string with err
-      }
-      return Err(());
-  }
-  let line = l.unwrap().trim();
-  if line.len() == 0 {
-    return Ok(false);
-  }
-
-  if conf.debug {
-    println!("processing line: {}", line);
-  }
-
-  let split: Vec<&str> = line.split_whitespace().collect();
-  let datefields = split.get(conf.timeposition..whitespaces_in_datefields).unwrap().join(" ");
-
-    let comma_pos = datefields.find(',').unwrap_or(datefields.len());
-    let (before_comma, _) = datefields.split_at(comma_pos);
-
-  //let date = parse_date(&datefields, &conf.date_pattern);
-  let date = parse_date(&before_comma, &conf.date_pattern);
-  match date {
-    None => Ok(false),
-    Some(date) => {
-      if conf.debug {
-        println!("parsed {} to date {}", datefields, date);
-      }
-
-      let ts = get_timestamp(date);
-      if ts < oldest_ts {
-        // TODO return string with err
-        return Err(());
-      }
-
-      let is_match = conf.re.captures_from_pos(&line, 0).unwrap();
-      let is_match = is_match.is_some();
-      if is_match && conf.verbose {
-        // no println, "\n" is already contained in line
-        print!("{}", line);
-      }
-      Ok(is_match)
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
+  extern crate tempfile;
+
   use super::*;
   use time as t;
+  use self::tempfile::tempfile;
+  use self::tempfile::NamedTempFile;
+  use std::io::{self, Write};
+
+  const empty_search_pattern: &str = "";
+  const some_log_file: &str = "";
+  const check_last_minute: u64 = 1;
+
+  fn get_dummy_conf(interval_to_check: u64, search_pattern: String, logfile: String) -> Config {
+    get_dummy_conf_format(interval_to_check, search_pattern, logfile, "".to_owned())
+  }
+
+  fn get_dummy_conf_format(interval_to_check: u64, search_pattern: String, logfile: String, date_pattern: String) -> Config {
+    Config::new(
+      interval_to_check,
+      search_pattern, // search pattern
+      logfile,  // logfile
+      1,              // max_critical_matches
+      1,              // max_warning_matches
+      date_pattern,  // date_pattern
+      0,              // timeposition
+      true,          // debug
+      true,          // verbose
+    )
+  }
 
   #[test]
   fn should_prepend_current_year() {
@@ -380,28 +412,19 @@ mod tests {
   #[test]
   fn should_correctly_calculate_oldest_allowed_ts_utc() {
     // given
-    let now = std::time::SystemTime::now(); // TODO mock a fixed time
-    let mins: u64 = 1;
-    let conf = Config {  // TODO use ::new
-      interval_to_check: mins,
-
-      search_pattern: "".to_owned(),
-      filename: "".to_owned(),
-      max_critical_matches: 1,
-      max_warning_matches: 1,
-      date_pattern: "".to_owned(),
-      timeposition: 1,
-      debug: false,
-      verbose: false,
-      re: Regex::new("").unwrap(),
-    };
+    let now = std::time::SystemTime::now(); // TODO use a fixed time. this test
+                                            // could be flaky in corner cases.
+    let interval_to_check: u64 = 1;
+    let conf = get_dummy_conf(interval_to_check,
+                              empty_search_pattern.to_owned(),
+                              some_log_file.to_owned());
 
     // when
-    let oldest_ts = get_oldest_allowed_utc_ts(&conf, now);
+    let oldest_allowed_ts = get_oldest_allowed_utc_ts(&conf, now);
 
     // then
     let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    assert_eq!(oldest_ts, since_the_epoch.as_secs() - (mins * 60));
+    assert_eq!(oldest_allowed_ts, since_the_epoch.as_secs() - (interval_to_check * 60));
   }
 
   #[test]
@@ -410,30 +433,21 @@ mod tests {
     std::env::set_var("TZ", "America/Los_Angeles");
     t::tzset();
 
-    let now = std::time::SystemTime::now(); // TODO mock a fixed time
+    let now = std::time::SystemTime::now();
     let interval_to_check: u64 = 13; // minutes
-    let conf = Config {
-      interval_to_check: interval_to_check,
-
-      search_pattern: "".to_owned(),
-      filename: "".to_owned(),
-      max_critical_matches: 1,
-      max_warning_matches: 1,
-      date_pattern: "".to_owned(),
-      timeposition: 1,
-      debug: false,
-      verbose: false,
-      re: Regex::new("").unwrap(),
-    };
+    let conf = get_dummy_conf(interval_to_check,
+                              empty_search_pattern.to_owned(),
+                              some_log_file.to_owned());
 
     // when
     let oldest_ts = get_oldest_allowed_local_ts(&conf, now);
 
     // then
-    // the oldest allowed timestamp in this case should not be current utc - interval_to_check
-    // but rather current time adjusted to local tz - interval_to_check
+    // the oldest allowed timestamp in this case should not be
+    // `current utc - interval_to_check`, but rather the current
+    // time adjusted to `local tz - interval_to_check`.
     let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    let offset = 7 * 60 * 60; // 7 hours
+    let offset = 7 * 60 * 60; // 7 hours is the timezone offset from utc to los angeles
     assert_eq!(oldest_ts, since_the_epoch.as_secs() - (interval_to_check * 60) - offset);
   }
 
@@ -464,4 +478,121 @@ mod tests {
     
     // then
   }
+
+  #[test]
+  fn should_search_in_line() {
+    // given
+
+    // when
+    //process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, conf: &Config);
+
+    // then
+    // -> Result<bool, ()> {
+  }
+
+  #[test]
+  fn should_search_in_file() {
+    // given
+    std::env::set_var("TZ", "Africa/Abidjan"); // Africa/Abidjan = +00:00 UTC Offset
+    t::tzset();
+
+    let now = std::time::SystemTime::now();
+    let elps = now.elapsed().unwrap().as_secs();
+    let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    let now_unix_ts = since_the_epoch.as_secs();
+
+    let format = "%b %d %H:%M:%S";
+
+    let dt = NaiveDateTime::from_timestamp(now_unix_ts as i64, 0);
+    let now_formatted = dt.format(format).to_string();
+
+    let five_minutes = now_unix_ts - (5 * 60);
+    let dt_five_minutes_ago = NaiveDateTime::from_timestamp(five_minutes as i64, 0);
+    let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
+
+    let mut file = NamedTempFile::new().expect("not able to create tempfile");
+    let path = file.path().to_str().expect("oh no").to_string();
+
+    let content = format!("{} foo_bar\n{} bar\n{} foo-bar\n{} foo_bar",
+                          five_minutes_ago, now_formatted, now_formatted, now_formatted);
+    writeln!(file, "{}", content).expect("tempfile cannot be written");
+
+    let interval_to_check: u64 = 2;
+    let conf = get_dummy_conf_format(interval_to_check, "foo[-_]+bar".to_owned(), path, format.to_owned());
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 2;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_handle_empty_file_correctly() {
+    // given
+    let mut file = NamedTempFile::new().expect("not able to create tempfile");
+    let path = file.path().to_str().expect("oh no").to_string();
+    writeln!(file, "").expect("tempfile cannot be written");
+    let conf = get_dummy_conf(check_last_minute, empty_search_pattern.to_owned(), path);
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 0;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_skip_binary_files() {
+    // given
+    let path = "./fixtures/1x1.png";
+    let conf = get_dummy_conf(check_last_minute, empty_search_pattern.to_owned(), path.to_owned());
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 0;
+    let files_processed = 0;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_handle_utf8_file_content_correctly() {
+    // given
+    let mut file = NamedTempFile::new().expect("not able to create tempfile");
+    let path = file.path().to_str().expect("oh no").to_string();
+    writeln!(file, "2018-09-13 00:03:01 🐱").expect("tempfile cannot be written");
+    let conf = get_dummy_conf(999999, "🐱".to_owned(), path);
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 1;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_handle_files_with_stack_traces() {
+    // given
+    let mut file = NamedTempFile::new().expect("not able to create tempfile");
+    let path = file.path().to_str().expect("oh no").to_string();
+    writeln!(file, "2018-09-13 00:03:01 foo\nsome\nsome\nsomefoo\n2018-09-13 00:03:01 bar\n").expect("tempfile cannot be written");
+    let conf = get_dummy_conf(999999, "bar".to_owned(), path);
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 1;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
 }

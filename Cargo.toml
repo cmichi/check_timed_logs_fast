@@ -8,6 +8,7 @@ chrono = "0.4"
 memmap = "0.5"
 time = "0.1.40"
 glob = "0.2.11"
+tempfile = "3.0.4"
 
 #onig = "4.2.0"
 #tokio = "0.1.7"
