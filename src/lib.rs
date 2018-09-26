@@ -361,14 +361,14 @@ mod tests {
   fn get_dummy_conf_format(interval_to_check: u64, search_pattern: String, logfile: String, date_pattern: String) -> Config {
     Config::new(
       interval_to_check,
-      search_pattern, // search pattern
-      logfile,  // logfile
+      search_pattern,
+      logfile,
       1,              // max_critical_matches
       1,              // max_warning_matches
-      date_pattern,  // date_pattern
+      date_pattern,
       0,              // timeposition
-      true,          // debug
-      true,          // verbose
+      false,          // debug
+      false,          // verbose
     )
   }
 
@@ -440,45 +440,6 @@ mod tests {
     let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
     let offset = 7 * 60 * 60; // 7 hours is the timezone offset from utc to los angeles
     assert_eq!(oldest_ts, since_the_epoch.as_secs() - (interval_to_check * 60) - offset);
-  }
-
-  #[test]
-  fn should_parse_everything_even_when_lines_do_not_contain_dates() {
-    // given
-
-    // when
-    
-    // then
-  }
-
-
-  #[test]
-  fn should_ignore_trailing_comma() {
-    // given
-
-    // when
-    
-    // then
-  }
-
-  #[test]
-  fn should_handle_file_age_correctly() {
-    // given
-
-    // when
-    
-    // then
-  }
-
-  #[test]
-  fn should_search_in_line() {
-    // given
-
-    // when
-    //process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, conf: &Config);
-
-    // then
-    // -> Result<bool, ()> {
   }
 
   #[test]
@@ -570,7 +531,7 @@ mod tests {
   }
 
   #[test]
-  fn should_handle_files_with_stack_traces() {
+  fn should_handle_files_with_lines_without_dates() {
     // given
     let mut file = NamedTempFile::new().expect("not able to create tempfile");
     let path = file.path().to_str().expect("oh no").to_string();
@@ -584,6 +545,24 @@ mod tests {
     let matches = 1;
     let files_processed = 1;
     assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_ignore_trailing_comma() {
+    // given
+
+    // when
+
+    // then
+  }
+
+  #[test]
+  fn should_handle_file_age_correctly() {
+    // given
+
+    // when
+
+    // then
   }
 
   // TODO all files matching the logfile pattern should be found, even those in subfolders
