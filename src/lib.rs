@@ -113,15 +113,6 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
     match entry {
       Ok(path) => {
         let p = path.to_str().expect("path not available");
-        /*
-        // TODO this is dangerous, since we don't check if it actually is a suffix
-        if p.contains(".gz") {
-          if conf.debug {
-            println!("skipping {:?} because zipped", conf.filename);
-          }
-          continue;
-        }
-        */
 
         if !check_file_age(&conf, p) {
           if conf.debug {
@@ -594,5 +585,7 @@ mod tests {
     let files_processed = 1;
     assert_eq!(res, Ok((matches, files_processed)));
   }
+
+  // TODO all files matching the logfile pattern should be found, even those in subfolders
 
 }
