@@ -15,16 +15,11 @@ are more than X occurrences of a regex in the last Y minutes (e.g. more
 than one exception in the last minute or more than 5 warnings in the last
 two minutes).  
 
-This rewrite was caused because of problems which occur with very large
+This rewrite was triggered by problems which occur with very large
 and verbose log files. The original plugin takes a long time for parsing
 and nagios times out after a few seconds of getting no reaction from a
 check — this then falsely shows up as a critical incident in
 monitoring.
-
-
-## Installation
-
-Follows.
 
 
 ## Performance
@@ -35,8 +30,8 @@ Follows.
 | Rust Rewrite      | 0.031 sec | 0.676 sec  | 83.088 sec |
 | Improvement       | 96.4 %    | 96.6 %     |            |
 
-These metrics provide only a rough idea, I haven't looked in detail
-at the exact difference in RAM usage (it doesn't seem to have increased
+These metrics provide a rough idea, I haven't looked in detail at the
+exact difference in RAM usage (it doesn't seem to have increased
 though). The performance is also dependent on the complexity of the
 regular expression.
 
@@ -62,9 +57,14 @@ two additional strategies:
 
 Furthermore, I know for sure (because I benchmarked it) that the `fancy-regex`
 crate is a slowing factor. The `regex` crate had better performance, but doesn't
-support advanced regex features like e.g. look-ahead. Since I want to stay
-compatible to the original `check_timed_logs` script I have to use a (slower)
-crate which supports these features.
+support advanced regex features like look-ahead. The original `check_timed_logs`
+script supports these features and since I want to stay compatible, I have to
+use a (slower) crate which supports these features.
+
+
+## Installation
+
+Follows.
 
 
 ## License
