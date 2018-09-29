@@ -7,22 +7,22 @@
 //!
 //! fn main() {
 //!   let conf = Config::new(
-//!     5,                              // interval in minutes to check
-//!     "timeout".to_owned(),           // regex to match in the file
-//!     "/var/log/some.log".to_owned(), // path to the log file
-//!     5,                              // max_critical_matches
-//!     1,                              // max_warning_matches
-//!     "%Y-%m-%d %H:%M:%S".to_owned(), // datepattern
-//!     0,                              // timeposition = position of datepattern in logfile
-//!     false,                          // flag to enable debug output
-//!     false,                          // flag to enable verbose output
+//!     5,                               // interval in minutes to check
+//!     "timeout".to_owned(),            // regex to match in the file
+//!     "./fixtures/logfile".to_owned(), // path to the log file
+//!     5,                               // max_critical_matches
+//!     1,                               // max_warning_matches
+//!     "%Y-%m-%d %H:%M:%S".to_owned(),  // datepattern
+//!     0,                               // timeposition = position of datepattern in logfile
+//!     false,                           // flag to enable debug output
+//!     false,                           // flag to enable verbose output
 //!   );
 //!
 //!   let res = check_timed_logs_fast::run(&conf);
 //!   match res {
 //!     Err(err) => {
 //!       eprintln!("ERROR: {}", err);
-//!       exit(1);
+//!       // ...
 //!     },
 //!     Ok((matches, files_matched)) => {
 //!       // ...
@@ -738,8 +738,8 @@ mod tests {
   #[test]
   fn should_search_matching_files() {
     // given
-    // file.0 should also be searched
-    let conf = get_dummy_conf(999999, "foobar".to_owned(), "./fixtures/file".to_owned());
+    // logfile.0 should also be searched
+    let conf = get_dummy_conf(999999, "foobar".to_owned(), "./fixtures/logfile".to_owned());
 
     // when
     let res = run(&conf);
