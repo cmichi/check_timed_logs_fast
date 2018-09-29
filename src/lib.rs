@@ -237,10 +237,6 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
     }
   };
 
-  //let comma_pos = datefields.find(',').unwrap_or(datefields.len());
-  //let (before_comma, _) = datefields.split_at(comma_pos);
-  //let date = parse_date(&before_comma, &conf.date_pattern);
-
   let date = parse_date(&datefields, &conf.date_pattern);
   match date {
     None => Ok(false),
@@ -294,7 +290,6 @@ fn adjust_to_local_tz(date: NaiveDateTime) -> DateTime<chrono::Local> {
 }
 
 fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
-  println!("foo: {}", datefields);
   let p = match Utc.datetime_from_str(&datefields, pattern) {
     Ok(v) => v,
     Err(e) => {
@@ -319,8 +314,8 @@ fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
       match Utc.datetime_from_str(&datestring, &new_pattern) {
         Ok(v) => v,
         Err(_) => {
-          // a typical reason for not being able to parse the date is that
-          // there is a stacktrace which spans multiple lines in the log
+          // if it's still not possible to parse a date from the line we just
+          // ignore the line.
           // eprintln!("This error appeared when parsing the date in the log
           //            file with the provided pattern: {:?}. The date fields:
           //            {:?}, the pattern: {:?}.", e, datefields, pattern);
@@ -710,5 +705,20 @@ mod tests {
   }
 
   // TODO all files matching the logfile pattern should be found, even those in subfolders
+
+  #[test]
+  fn should_search_matching_files() {
+    // given
+    // file.0 should also be searched
+    let conf = get_dummy_conf(999999, "foobar".to_owned(), "./fixtures/file".to_owned());
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 2;
+    let files_processed = 2;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
 
 }
