@@ -1,6 +1,6 @@
 //! check_timed_logs_fast.
 //!
-//! ```no_run
+//! ```
 //! extern crate check_timed_logs_fast;
 //!
 //! use check_timed_logs_fast::*;
@@ -16,7 +16,7 @@
 //!     0,                               // timeposition = position of datepattern in logfile
 //!     false,                           // flag to enable debug output
 //!     false,                           // flag to enable verbose output
-//!   );
+//!   ).unwrap();
 //!
 //!   let res = check_timed_logs_fast::run(&conf);
 //!   match res {
