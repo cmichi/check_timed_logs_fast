@@ -776,29 +776,29 @@
 </pre><pre class="rust ">
 <span class="doccomment">//! check_timed_logs_fast.</span>
 <span class="doccomment">//!</span>
-<span class="doccomment">//! ```no_run</span>
+<span class="doccomment">//! ```</span>
 <span class="doccomment">//! extern crate check_timed_logs_fast;</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! use check_timed_logs_fast::*;</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! fn main() {</span>
 <span class="doccomment">//!   let conf = Config::new(</span>
-<span class="doccomment">//!     5,                              // interval in minutes to check</span>
-<span class="doccomment">//!     &quot;timeout&quot;.to_owned(),           // regex to match in the file</span>
-<span class="doccomment">//!     &quot;/var/log/some.log&quot;.to_owned(), // path to the log file</span>
-<span class="doccomment">//!     5,                              // max_critical_matches</span>
-<span class="doccomment">//!     1,                              // max_warning_matches</span>
-<span class="doccomment">//!     &quot;%Y-%m-%d %H:%M:%S&quot;.to_owned(), // datepattern</span>
-<span class="doccomment">//!     0,                              // timeposition = position of datepattern in logfile</span>
-<span class="doccomment">//!     false,                          // flag to enable debug output</span>
-<span class="doccomment">//!     false,                          // flag to enable verbose output</span>
-<span class="doccomment">//!   );</span>
+<span class="doccomment">//!     5,                               // interval in minutes to check</span>
+<span class="doccomment">//!     &quot;timeout&quot;.to_owned(),            // regex to match in the file</span>
+<span class="doccomment">//!     &quot;./fixtures/logfile&quot;.to_owned(), // path to the log file</span>
+<span class="doccomment">//!     5,                               // max_critical_matches</span>
+<span class="doccomment">//!     1,                               // max_warning_matches</span>
+<span class="doccomment">//!     &quot;%Y-%m-%d %H:%M:%S&quot;.to_owned(),  // datepattern</span>
+<span class="doccomment">//!     0,                               // timeposition = position of datepattern in logfile</span>
+<span class="doccomment">//!     false,                           // flag to enable debug output</span>
+<span class="doccomment">//!     false,                           // flag to enable verbose output</span>
+<span class="doccomment">//!   ).unwrap();</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//!   let res = check_timed_logs_fast::run(&amp;conf);</span>
 <span class="doccomment">//!   match res {</span>
 <span class="doccomment">//!     Err(err) =&gt; {</span>
 <span class="doccomment">//!       eprintln!(&quot;ERROR: {}&quot;, err);</span>
-<span class="doccomment">//!       exit(1);</span>
+<span class="doccomment">//!       // ...</span>
 <span class="doccomment">//!     },</span>
 <span class="doccomment">//!     Ok((matches, files_matched)) =&gt; {</span>
 <span class="doccomment">//!       // ...</span>
@@ -1514,8 +1514,8 @@
   <span class="attribute">#[<span class="ident">test</span>]</span>
   <span class="kw">fn</span> <span class="ident">should_search_matching_files</span>() {
     <span class="comment">// given</span>
-    <span class="comment">// file.0 should also be searched</span>
-    <span class="kw">let</span> <span class="ident">conf</span> <span class="op">=</span> <span class="ident">get_dummy_conf</span>(<span class="number">999999</span>, <span class="string">&quot;foobar&quot;</span>.<span class="ident">to_owned</span>(), <span class="string">&quot;./fixtures/file&quot;</span>.<span class="ident">to_owned</span>());
+    <span class="comment">// logfile.0 should also be searched</span>
+    <span class="kw">let</span> <span class="ident">conf</span> <span class="op">=</span> <span class="ident">get_dummy_conf</span>(<span class="number">999999</span>, <span class="string">&quot;foobar&quot;</span>.<span class="ident">to_owned</span>(), <span class="string">&quot;./fixtures/logfile&quot;</span>.<span class="ident">to_owned</span>());
 
     <span class="comment">// when</span>
     <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="ident">run</span>(<span class="kw-2">&amp;</span><span class="ident">conf</span>);
