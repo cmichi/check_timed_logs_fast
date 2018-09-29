@@ -148,6 +148,6 @@ pub fn parse() -> Config {
     timeposition,
     debug,
     verbose,
-  );
+  ).unwrap();
   conf
 }

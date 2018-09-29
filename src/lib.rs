@@ -19,7 +19,6 @@ pub struct Config {
   pub search_pattern: String,
   pub filename: String,
 
-  // TODO is usize sufficient?
   pub max_critical_matches: u64,
   pub max_warning_matches: u64,
   pub date_pattern: String,
@@ -41,14 +40,17 @@ impl Config {
     timeposition: usize,
     debug: bool,
     verbose: bool,
-  ) -> Config {
+  ) -> Result<Config, String> {
     // TODO the validation should go here and not in the parser
+    if filename == "-" {
+      return Err("stdin as path is not supported".to_owned());
+    }
 
     if date_pattern.len() == 0 {
       date_pattern = String::from("%Y-%m-%d %H:%M:%S");
     }
 
-    Config {
+    Ok(Config {
       interval_to_check,
       search_pattern: search_pattern.to_owned(),
       filename,
@@ -60,27 +62,8 @@ impl Config {
       debug,
       verbose,
       re: Regex::new(&search_pattern.to_owned()).expect("regex cannot be created"),
-    }
+    })
   }
-}
-
-fn get_oldest_allowed_utc_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
-  let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-  let now_unix_ts = since_the_epoch.as_secs();
-  let go_back_secs = 60 * conf.interval_to_check;
-
-  if go_back_secs > now_unix_ts {
-    0
-  } else {
-    now_unix_ts - go_back_secs
-  }
-}
-
-fn get_oldest_allowed_local_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
-  let oldest_ts_utc = get_oldest_allowed_utc_ts(conf, now);
-  let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(oldest_ts_utc as i64, 0); // TODO i64?!
-  let adjusted_date = adjust_to_local_tz(oldest_date_no_tz_offset); 
-  get_timestamp_from_local(adjusted_date)
 }
 
 pub fn run(conf: &Config) -> Result<(u64, u64), String> {
@@ -98,7 +81,7 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
     println!("looking for files matching {}", exp);
   }
 
-  // the ts is adjusted to local time
+  // the timestamp is adjusted to local time
   let now = SystemTime::now();
   let oldest_ts = get_oldest_allowed_local_ts(conf, now);
 
@@ -121,10 +104,6 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
           continue; 
         }
 
-        if p == "-" {
-          return Err("stdin as path is not supported".to_owned());
-        }
-
         let local_matches = process_file(p, &conf, whitespaces_in_date, oldest_ts);
         match local_matches {
           Ok(matches_in_file) => {
@@ -141,6 +120,25 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
     }
   }
   Ok((matches, files_processed))
+}
+
+fn get_oldest_allowed_utc_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
+  let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+  let now_unix_ts = since_the_epoch.as_secs();
+  let go_back_secs = 60 * conf.interval_to_check;
+
+  if go_back_secs > now_unix_ts {
+    0
+  } else {
+    now_unix_ts - go_back_secs
+  }
+}
+
+fn get_oldest_allowed_local_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
+  let oldest_ts_utc = get_oldest_allowed_utc_ts(conf, now);
+  let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(oldest_ts_utc as i64, 0); // TODO i64?!
+  let adjusted_date = adjust_to_local_tz(oldest_date_no_tz_offset);
+  get_timestamp_from_local(adjusted_date)
 }
 
 fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts: u64) -> Result<u64, (String, u64)> {
@@ -366,7 +364,7 @@ mod tests {
       timeposition,
       true ,          // debug is set to true to also test these branches
       true,           // verbose is set to true to also test these branches
-    )
+    ).unwrap()
   }
 
   fn create_temp_file(content: &str) -> (NamedTempFile, String) {
@@ -704,8 +702,6 @@ mod tests {
     assert_eq!(res, Ok((matches, files_processed)));
   }
 
-  // TODO all files matching the logfile pattern should be found, even those in subfolders
-
   #[test]
   fn should_search_matching_files() {
     // given
@@ -719,6 +715,28 @@ mod tests {
     let matches = 2;
     let files_processed = 2;
     assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_abort_when_stdin_used_as_logfile() {
+    // given
+    let stdin = "-".to_owned();
+
+    // when
+    let conf = Config::new(
+      999999,
+      "foobar".to_owned(),
+      stdin,
+      1,              // max_critical_matches
+      1,              // max_warning_matches
+      "".to_owned(),  // datepattern
+      0,              // timeposition
+      true,           // debug is set to true to also test these branches
+      true,           // verbose is set to true to also test these branches
+    );
+
+    // then
+    assert_eq!(conf.is_err(), true);
   }
 
 }

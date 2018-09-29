@@ -10,13 +10,4 @@ time = "0.1.40"
 glob = "0.2.11"
 tempfile = "3.0.4"
 filetime = "0.2.1"
-
-#onig = "4.2.0"
-#tokio = "0.1.7"
-#tokio-codec = "0.1.0"
-#tokio-stdin-stdout = "0.1.4"
-#rev_lines = "0.2.1"
 fancy-regex = "0.1.0"
-
-#[target.x86_64-ubuntu]
-#rustflags = ["-C", "target-feature=+crt-static"]
