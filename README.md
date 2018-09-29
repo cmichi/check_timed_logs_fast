@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/cmichi/check_timed_logs_fast.svg?branch=master)](https://travis-ci.org/cmichi/check_timed_logs_fast)
 [![codecov](https://codecov.io/gh/cmichi/check_timed_logs_fast/branch/master/graph/badge.svg)](https://codecov.io/gh/cmichi/check_timed_logs_fast)
+[![Crates.io](https://img.shields.io/crates/v/check_timed_logs_fast.svg)](https://crates.io/crates/check_timed_logs_fast)
 
 [Documentation](https://cmichi.github.io/check_timed_logs_fast/check_timed_logs_fast/index.html)
 
