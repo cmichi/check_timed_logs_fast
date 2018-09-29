@@ -2,6 +2,12 @@
 name = "check_timed_logs_fast"
 version = "0.1.0"
 authors = ["cmichi <mich@elmueller.net>"]
+license = "MIT"
+description = "A nagios plugin which monitors log files for the occurrence of regular expressions."
+homepage = "https://github.com/cmichi/check_timed_logs_fast"
+repository = "https://github.com/cmichi/check_timed_logs_fast"
+keywords = ["nagios", "icinga", "icinga2", "log", "check"]
+documentation = "https://cmichi.github.io/cmichi/check_timed_logs_fast/index.html"
 
 [dependencies]
 chrono = "0.4"
