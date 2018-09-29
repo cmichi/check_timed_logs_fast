@@ -1,3 +1,36 @@
+//! check_timed_logs_fast.
+//!
+//! ```no_run
+//! extern crate check_timed_logs_fast;
+//!
+//! use check_timed_logs_fast::*;
+//!
+//! fn main() {
+//!   let conf = Config::new(
+//!     5,                              // interval in minutes to check
+//!     "timeout".to_owned(),           // regex to match in the file
+//!     "/var/log/some.log".to_owned(), // path to the log file
+//!     5,                              // max_critical_matches
+//!     1,                              // max_warning_matches
+//!     "%Y-%m-%d %H:%M:%S".to_owned(), // datepattern
+//!     0,                              // timeposition = position of datepattern in logfile
+//!     false,                          // flag to enable debug output
+//!     false,                          // flag to enable verbose output
+//!   );
+//!
+//!   let res = check_timed_logs_fast::run(&conf);
+//!   match res {
+//!     Err(err) => {
+//!       eprintln!("ERROR: {}", err);
+//!       exit(1);
+//!     },
+//!     Ok((matches, files_matched)) => {
+//!       // ...
+//!     }
+//!   }
+//! }
+//! ```
+
 extern crate memmap;
 extern crate chrono;
 extern crate time;
