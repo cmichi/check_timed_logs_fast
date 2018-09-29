@@ -343,10 +343,12 @@ fn get_timestamp(date: DateTime<chrono::Utc>) -> u64 {
 #[cfg(test)]
 mod tests {
   extern crate tempfile;
+  extern crate filetime;
 
   use super::*;
   use time as t;
   use self::tempfile::NamedTempFile;
+  use self::filetime::FileTime;
   use std::io::Write;
 
   const EMPTY_SEARCH_PATTERN: &str = "";
@@ -369,6 +371,32 @@ mod tests {
       false,          // debug
       false,          // verbose
     )
+  }
+
+  fn create_temp_file(content: &str) -> (NamedTempFile, String) {
+    let mut file = NamedTempFile::new().expect("not able to create tempfile");
+    writeln!(file, "{}", content).expect("tempfile cannot be written");
+    let path = file.path().to_str().expect("oh no").to_string();
+    (file, path)
+  }
+
+  fn get_now_secs() -> u64 {
+    let now = std::time::SystemTime::now();
+    let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    since_the_epoch.as_secs()
+  }
+
+  fn reset_tz() {
+    std::env::set_var("TZ", "Africa/Abidjan"); // Africa/Abidjan = +00:00 UTC Offset
+    t::tzset();
+  }
+
+  // Adjusts for local timezone
+  fn str_to_filetime(format: &str, s: &str) -> FileTime {
+    let mut tm = time::strptime(s, format).unwrap();
+    tm.tm_utcoff = time::now().tm_utcoff;
+    let ts = tm.to_timespec();
+    FileTime::from_unix_time(ts.sec as i64, ts.nsec as u32)
   }
 
   #[test]
@@ -444,14 +472,8 @@ mod tests {
   #[test]
   fn should_search_in_file() {
     // given
-    std::env::set_var("TZ", "Africa/Abidjan"); // Africa/Abidjan = +00:00 UTC Offset
-    t::tzset();
-
-    let now = std::time::SystemTime::now();
-    let elps = now.elapsed().unwrap().as_secs();
-    let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    let now_unix_ts = since_the_epoch.as_secs();
-
+    reset_tz();
+    let now_unix_ts = get_now_secs();
     let format = "%b %d %H:%M:%S";
 
     let dt = NaiveDateTime::from_timestamp(now_unix_ts as i64, 0);
@@ -461,12 +483,9 @@ mod tests {
     let dt_five_minutes_ago = NaiveDateTime::from_timestamp(five_minutes as i64, 0);
     let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
 
-    let mut file = NamedTempFile::new().expect("not able to create tempfile");
-    let path = file.path().to_str().expect("oh no").to_string();
-
     let content = format!("{} foo_bar\n{} bar\n{} foo-bar\n{} foo_bar",
                           five_minutes_ago, now_formatted, now_formatted, now_formatted);
-    writeln!(file, "{}", content).expect("tempfile cannot be written");
+    let (_file, path) = create_temp_file(&content);
 
     let interval_to_check: u64 = 2;
     let conf = get_dummy_conf_format(interval_to_check, "foo[-_]+bar".to_owned(), path, format.to_owned());
@@ -483,9 +502,7 @@ mod tests {
   #[test]
   fn should_handle_empty_file_correctly() {
     // given
-    let mut file = NamedTempFile::new().expect("not able to create tempfile");
-    let path = file.path().to_str().expect("oh no").to_string();
-    writeln!(file, "").expect("tempfile cannot be written");
+    let (_file, path) = create_temp_file("");
     let conf = get_dummy_conf(CHECK_LAST_MINUTE, EMPTY_SEARCH_PATTERN.to_owned(), path);
 
     // when
@@ -515,9 +532,7 @@ mod tests {
   #[test]
   fn should_handle_utf8_file_content_correctly() {
     // given
-    let mut file = NamedTempFile::new().expect("not able to create tempfile");
-    let path = file.path().to_str().expect("oh no").to_string();
-    writeln!(file, "2018-09-13 00:03:01 🐱").expect("tempfile cannot be written");
+    let (_file, path) = create_temp_file("2018-09-13 00:03:01 🐱");
     let conf = get_dummy_conf(999999, "🐱".to_owned(), path);
 
     // when
@@ -532,9 +547,7 @@ mod tests {
   #[test]
   fn should_handle_files_with_lines_without_dates() {
     // given
-    let mut file = NamedTempFile::new().expect("not able to create tempfile");
-    let path = file.path().to_str().expect("oh no").to_string();
-    writeln!(file, "2018-09-13 00:03:01 foo\nsome\nsome\nsomefoo\n2018-09-13 00:03:01 bar\n").expect("tempfile cannot be written");
+    let (_file, path) = create_temp_file("2018-09-13 00:03:01 foo\nsome\nsome\nsomefoo\n2018-09-13 00:03:01 bar\n");
     let conf = get_dummy_conf(999999, "bar".to_owned(), path);
 
     // when
@@ -549,19 +562,87 @@ mod tests {
   #[test]
   fn should_ignore_trailing_comma() {
     // given
+    let format = "%Y-%m-%d %H:%M:%S";
+    let (_file, path) = create_temp_file("2018-09-13 00:01:51,079 foo\n2018-09-13 00:01:51,079 foobar\n");
+    let conf = get_dummy_conf_format(999999, "foo".to_owned(), path, format.to_owned());
 
     // when
+    let res = run(&conf);
 
     // then
+    let matches = 2;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_handle_non_default_date_format() {
+    // given
+    reset_tz();
+    let now_unix_ts = get_now_secs();
+    let format = "%Y-%m-%d %H:%M:%S";
+
+    let dt = NaiveDateTime::from_timestamp(now_unix_ts as i64, 0);
+    let now_formatted = dt.format(format).to_string();
+
+    let five_minutes = now_unix_ts - (5 * 60);
+    let dt_five_minutes_ago = NaiveDateTime::from_timestamp(five_minutes as i64, 0);
+    let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
+
+    let content = format!("{} foo\n{} bar\n{} foobar",
+                          five_minutes_ago, now_formatted, now_formatted);
+    let (_file, path) = create_temp_file(&content);
+
+    let interval_to_check: u64 = 2;
+    let conf = get_dummy_conf_format(interval_to_check, "foo".to_owned(), path, format.to_owned());
+
+    // when
+    let res = run(&conf);
+
+    // then
+    // the entry which was five minutes ago should not be matched
+    let matches = 1;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_skip_old_files() {
+    // given
+    let (file, path) = create_temp_file("2018-09-13 00:03:01 foo");
+    let five_minutes = 5;
+    let conf = get_dummy_conf(five_minutes, "foo".to_owned(), path);
+
+    let start_of_year = str_to_filetime("%Y%m%d%H%M", "201501010000");
+    let path = file.path();
+    filetime::set_file_times(path, start_of_year, start_of_year).unwrap();
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 0;
+    let files_processed = 0;
+    assert_eq!(res, Ok((matches, files_processed)));
   }
 
   #[test]
   fn should_handle_file_age_correctly() {
     // given
+    let (file, path) = create_temp_file("2018-09-13 00:03:01 foo");
+    let conf = get_dummy_conf(999999, "foo".to_owned(), path);
+    let start_of_year = str_to_filetime("%Y%m%d%H%M", "201809130000");
+
+    let path = file.path();
+    filetime::set_file_times(path, start_of_year, start_of_year).unwrap();
 
     // when
+    let res = run(&conf);
 
     // then
+    let matches = 1;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
   }
 
   // TODO all files matching the logfile pattern should be found, even those in subfolders
