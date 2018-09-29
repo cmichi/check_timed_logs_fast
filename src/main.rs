@@ -6,8 +6,8 @@ mod args;
 
 fn main() {
   let conf = args::parse();
-  let res = check_timed_logs_fast::run(&conf);
 
+  let res = check_timed_logs_fast::run(&conf);
   match res {
     Err(err) => {
       eprintln!("ERROR: {}", err);

@@ -16,7 +16,7 @@ use glob::glob;
 
 pub struct Config {
   pub interval_to_check: u64,
-  pub search_pattern: String, // TODO probably no longer necessary? or still used in prints?
+  pub search_pattern: String,
   pub filename: String,
 
   // TODO is usize sufficient?
@@ -346,13 +346,12 @@ mod tests {
 
   use super::*;
   use time as t;
-  use self::tempfile::tempfile;
   use self::tempfile::NamedTempFile;
-  use std::io::{self, Write};
+  use std::io::Write;
 
-  const empty_search_pattern: &str = "";
-  const some_log_file: &str = "";
-  const check_last_minute: u64 = 1;
+  const EMPTY_SEARCH_PATTERN: &str = "";
+  const SOME_LOG_FILE: &str = "";
+  const CHECK_LAST_MINUTE: u64 = 1;
 
   fn get_dummy_conf(interval_to_check: u64, search_pattern: String, logfile: String) -> Config {
     get_dummy_conf_format(interval_to_check, search_pattern, logfile, "".to_owned())
@@ -407,8 +406,8 @@ mod tests {
                                             // could be flaky in corner cases.
     let interval_to_check: u64 = 1;
     let conf = get_dummy_conf(interval_to_check,
-                              empty_search_pattern.to_owned(),
-                              some_log_file.to_owned());
+                              EMPTY_SEARCH_PATTERN.to_owned(),
+                              SOME_LOG_FILE.to_owned());
 
     // when
     let oldest_allowed_ts = get_oldest_allowed_utc_ts(&conf, now);
@@ -427,8 +426,8 @@ mod tests {
     let now = std::time::SystemTime::now();
     let interval_to_check: u64 = 13; // minutes
     let conf = get_dummy_conf(interval_to_check,
-                              empty_search_pattern.to_owned(),
-                              some_log_file.to_owned());
+                              EMPTY_SEARCH_PATTERN.to_owned(),
+                              SOME_LOG_FILE.to_owned());
 
     // when
     let oldest_ts = get_oldest_allowed_local_ts(&conf, now);
@@ -487,7 +486,7 @@ mod tests {
     let mut file = NamedTempFile::new().expect("not able to create tempfile");
     let path = file.path().to_str().expect("oh no").to_string();
     writeln!(file, "").expect("tempfile cannot be written");
-    let conf = get_dummy_conf(check_last_minute, empty_search_pattern.to_owned(), path);
+    let conf = get_dummy_conf(CHECK_LAST_MINUTE, EMPTY_SEARCH_PATTERN.to_owned(), path);
 
     // when
     let res = run(&conf);
@@ -502,7 +501,7 @@ mod tests {
   fn should_skip_binary_files() {
     // given
     let path = "./fixtures/1x1.png";
-    let conf = get_dummy_conf(check_last_minute, empty_search_pattern.to_owned(), path.to_owned());
+    let conf = get_dummy_conf(CHECK_LAST_MINUTE, EMPTY_SEARCH_PATTERN.to_owned(), path.to_owned());
 
     // when
     let res = run(&conf);
