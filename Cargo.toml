@@ -7,7 +7,7 @@ description = "A nagios plugin which monitors log files for the occurrence of re
 homepage = "https://github.com/cmichi/check_timed_logs_fast"
 repository = "https://github.com/cmichi/check_timed_logs_fast"
 keywords = ["nagios", "icinga", "icinga2", "log", "check"]
-documentation = "https://cmichi.github.io/cmichi/check_timed_logs_fast/index.html"
+documentation = "https://cmichi.github.io/check_timed_logs_fast/check_timed_logs_fast/index.html"
 
 [dependencies]
 chrono = "0.4"
