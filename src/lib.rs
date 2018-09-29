@@ -228,7 +228,7 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
   }
 
   let split: Vec<&str> = line.split_whitespace().collect();
-  let datefields_ = split.get(conf.timeposition..whitespaces_in_datefields);
+  let datefields_ = split.get(conf.timeposition..(conf.timeposition + whitespaces_in_datefields));
   let datefields;
   match datefields_ {
     None => return Ok(false),
@@ -237,10 +237,11 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
     }
   };
 
-  let comma_pos = datefields.find(',').unwrap_or(datefields.len());
-  let (before_comma, _) = datefields.split_at(comma_pos);
+  //let comma_pos = datefields.find(',').unwrap_or(datefields.len());
+  //let (before_comma, _) = datefields.split_at(comma_pos);
+  //let date = parse_date(&before_comma, &conf.date_pattern);
 
-  let date = parse_date(&before_comma, &conf.date_pattern);
+  let date = parse_date(&datefields, &conf.date_pattern);
   match date {
     None => Ok(false),
     Some(date) => {
@@ -293,10 +294,10 @@ fn adjust_to_local_tz(date: NaiveDateTime) -> DateTime<chrono::Local> {
 }
 
 fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
+  println!("foo: {}", datefields);
   let p = match Utc.datetime_from_str(&datefields, pattern) {
     Ok(v) => v,
     Err(e) => {
-      println!("trying to fix error");
       // there are a few things we can try to fix the error
       let err_desc = e.to_string();
       if err_desc == "trailing input" {
@@ -356,10 +357,10 @@ mod tests {
   const CHECK_LAST_MINUTE: u64 = 1;
 
   fn get_dummy_conf(interval_to_check: u64, search_pattern: String, logfile: String) -> Config {
-    get_dummy_conf_format(interval_to_check, search_pattern, logfile, "".to_owned())
+    get_dummy_conf_format(interval_to_check, search_pattern, logfile, "".to_owned(), 0)
   }
 
-  fn get_dummy_conf_format(interval_to_check: u64, search_pattern: String, logfile: String, date_pattern: String) -> Config {
+  fn get_dummy_conf_format(interval_to_check: u64, search_pattern: String, logfile: String, date_pattern: String, timeposition: usize) -> Config {
     Config::new(
       interval_to_check,
       search_pattern,
@@ -367,15 +368,17 @@ mod tests {
       1,              // max_critical_matches
       1,              // max_warning_matches
       date_pattern,
-      0,              // timeposition
-      false,          // debug
-      false,          // verbose
+      timeposition,
+      true ,          // debug is set to true to also test these branches
+      true,           // verbose is set to true to also test these branches
     )
   }
 
   fn create_temp_file(content: &str) -> (NamedTempFile, String) {
     let mut file = NamedTempFile::new().expect("not able to create tempfile");
-    writeln!(file, "{}", content).expect("tempfile cannot be written");
+    if content.len() > 0 {
+      writeln!(file, "{}", content).expect("tempfile cannot be written");
+    }
     let path = file.path().to_str().expect("oh no").to_string();
     (file, path)
   }
@@ -484,11 +487,41 @@ mod tests {
     let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
 
     let content = format!("{} foo_bar\n{} bar\n{} foo-bar\n{} foo_bar",
+                           five_minutes_ago, now_formatted, now_formatted, now_formatted);
+    let (_file, path) = create_temp_file(&content);
+
+    let interval_to_check: u64 = 2;
+    let conf = get_dummy_conf_format(interval_to_check, "foo[-_]+bar".to_owned(), path, format.to_owned(), 0);
+
+    // when
+    let res = run(&conf);
+
+    // then
+    let matches = 2;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+
+  }
+  #[test]
+  fn should_handle_timeposition() {
+    // given
+    reset_tz();
+    let now_unix_ts = get_now_secs();
+    let format = "%b %d %H:%M:%S";
+
+    let dt = NaiveDateTime::from_timestamp(now_unix_ts as i64, 0);
+    let now_formatted = dt.format(format).to_string();
+
+    let five_minutes = now_unix_ts - (5 * 60);
+    let dt_five_minutes_ago = NaiveDateTime::from_timestamp(five_minutes as i64, 0);
+    let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
+
+    let content = format!("foo_bar {}\nbar {}\nfoo-bar {}\nfoo_bar {}",
                           five_minutes_ago, now_formatted, now_formatted, now_formatted);
     let (_file, path) = create_temp_file(&content);
 
     let interval_to_check: u64 = 2;
-    let conf = get_dummy_conf_format(interval_to_check, "foo[-_]+bar".to_owned(), path, format.to_owned());
+    let conf = get_dummy_conf_format(interval_to_check, "foo[-_]+bar".to_owned(), path, format.to_owned(), 1);
 
     // when
     let res = run(&conf);
@@ -510,7 +543,7 @@ mod tests {
 
     // then
     let matches = 0;
-    let files_processed = 1;
+    let files_processed = 0;
     assert_eq!(res, Ok((matches, files_processed)));
   }
 
@@ -564,7 +597,7 @@ mod tests {
     // given
     let format = "%Y-%m-%d %H:%M:%S";
     let (_file, path) = create_temp_file("2018-09-13 00:01:51,079 foo\n2018-09-13 00:01:51,079 foobar\n");
-    let conf = get_dummy_conf_format(999999, "foo".to_owned(), path, format.to_owned());
+    let conf = get_dummy_conf_format(999999, "foo".to_owned(), path, format.to_owned(), 0);
 
     // when
     let res = run(&conf);
@@ -580,7 +613,7 @@ mod tests {
     // given
     reset_tz();
     let now_unix_ts = get_now_secs();
-    let format = "%Y-%m-%d %H:%M:%S";
+    let format = "%b %d %H:%M:%S";
 
     let dt = NaiveDateTime::from_timestamp(now_unix_ts as i64, 0);
     let now_formatted = dt.format(format).to_string();
@@ -590,11 +623,42 @@ mod tests {
     let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
 
     let content = format!("{} foo\n{} bar\n{} foobar",
-                          five_minutes_ago, now_formatted, now_formatted);
+                           five_minutes_ago, now_formatted, now_formatted);
     let (_file, path) = create_temp_file(&content);
 
     let interval_to_check: u64 = 2;
-    let conf = get_dummy_conf_format(interval_to_check, "foo".to_owned(), path, format.to_owned());
+    let conf = get_dummy_conf_format(interval_to_check, "foo".to_owned(), path, format.to_owned(), 0);
+
+    // when
+    let res = run(&conf);
+
+    // then
+    // the entry which was five minutes ago should not be matched
+    let matches = 1;
+    let files_processed = 1;
+    assert_eq!(res, Ok((matches, files_processed)));
+  }
+
+  #[test]
+  fn should_handle_non_default_date_format_and_trailing_comma_and_different_timeposition() {
+    // given
+    reset_tz();
+    let now_unix_ts = get_now_secs();
+    let format = "%b %d %H:%M:%S";
+
+    let dt = NaiveDateTime::from_timestamp(now_unix_ts as i64, 0);
+    let now_formatted = dt.format(format).to_string();
+
+    let five_minutes = now_unix_ts - (5 * 60);
+    let dt_five_minutes_ago = NaiveDateTime::from_timestamp(five_minutes as i64, 0);
+    let five_minutes_ago = dt_five_minutes_ago.format(format).to_string();
+
+    let content = format!("foo {},123\nbar{},345\nfoo {},567",
+                           five_minutes_ago, now_formatted, now_formatted);
+    let (_file, path) = create_temp_file(&content);
+
+    let interval_to_check: u64 = 2;
+    let conf = get_dummy_conf_format(interval_to_check, "foo".to_owned(), path, format.to_owned(), 1);
 
     // when
     let res = run(&conf);
