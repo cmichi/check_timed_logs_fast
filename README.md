@@ -55,7 +55,7 @@ I suspect that there is room for more improvement and would like to implement
 two additional strategies:
 
 1. split work into worker threads
-2. asynchronous processing and if possible asynchronous syscalls.
+2. asynchronous processing
 
 Furthermore, I know for sure (because I benchmarked it) that the `fancy-regex`
 crate is a slowing factor. The `regex` crate had better performance, but doesn't
@@ -64,9 +64,18 @@ script supports these features and since I want to stay compatible, I have to
 use a (slower) crate which supports these features.
 
 
-## Installation
+## Installation/Usage
 
-Follows.
+	cargo install check_timed_logs_fast
+
+	# if there is >= 1 occurrence of either timeout or closed then
+	# warn. if there are >= 5 issue a critical incident.
+	check_timed_logs_fast -logfile /var/log/app.log -pattern "timeout|closed" -interval 10 -w 1 -c 5
+
+You can use MUSL to compile a generic, static binary for some unknown linux:
+
+	rustup target add x86_64-unknown-linux-musl
+	cargo build --release --target x86_64-unknown-linux-musl
 
 
 ## License
