@@ -57,9 +57,9 @@ pub fn adjust_to_local_tz(date: NaiveDateTime) -> DateTime<chrono::Local> {
 pub fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
   let p = match Utc.datetime_from_str(&datefields, pattern) {
     Ok(v) => v,
-    Err(e) => {
+    Err(err) => {
       // there are a few things we can try to fix the error
-      let err_desc = e.to_string();
+      let err_desc = err.to_string();
       if err_desc == "trailing input" {
         // the original check_timed_logs.pl would just ignore the trailing input,
         // but unfortunately chrono does not support ignoring trailing input.
@@ -81,9 +81,6 @@ pub fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
         Err(_) => {
           // if it's still not possible to parse a date from the line we just
           // ignore the line.
-          // eprintln!("This error appeared when parsing the date in the log
-          //            file with the provided pattern: {:?}. The date fields:
-          //            {:?}, the pattern: {:?}.", e, datefields, pattern);
           return None;
         },
       }
@@ -131,6 +128,19 @@ mod tests {
     // then
     let ts = date.unwrap().timestamp() as u64;
     assert_eq!(ts, 1533727701);
+  }
+
+  #[test]
+  fn should_return_none_when_no_date_present() {
+    // given
+    let pattern = "%Y %b %d %H:%M:%S";
+    let datefields = "foo bar foo bar";
+
+    // when
+    let date = parse_date(datefields, pattern);
+
+    // then
+    assert_eq!(date, None);
   }
 
 }

@@ -282,22 +282,22 @@ fn search_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, c
     println!("searching line: {}", line);
   }
 
-  let split: Vec<&str> = line.split_whitespace().collect();
-  let datefields_ = split.get(conf.timeposition..(conf.timeposition + whitespaces_in_datefields));
-  let datefields;
-  match datefields_ {
+  let words: Vec<&str> = line.split_whitespace().collect();
+  let datefields = words.get(conf.timeposition..(conf.timeposition + whitespaces_in_datefields));
+  let extracted_date;
+  match datefields {
     None => return Ok(false),
     Some(fields) => {
-      datefields = fields.join(" ");
+      extracted_date = fields.join(" ");
     }
   };
 
-  let date = utils::parse_date(&datefields, &conf.date_pattern);
+  let date = utils::parse_date(&extracted_date, &conf.date_pattern);
   match date {
     None => Ok(false),
     Some(date) => {
       if conf.debug {
-        println!("parsed {} to date {}", datefields, date);
+        println!("parsed {} to date {}", extracted_date, date);
       }
 
       let ts_line = utils::get_timestamp(date);
@@ -366,6 +366,14 @@ mod tests {
     }
     let path = file.path().to_str().expect("oh no").to_string();
     (file, path)
+  }
+
+  /// returns approximately the minutes since unix epoch
+  fn forever() -> u64 {
+    // we subtract the tz offset for los angeles (-7h) because some
+    // of the tests use that tz and it is sufficient to return a
+    // very old timestamp from this function.
+    (get_now_secs() / 60) - (7 * 60)
   }
 
   fn get_now_secs() -> u64 {
@@ -500,22 +508,23 @@ mod tests {
   fn should_skip_binary_files() {
     // given
     let path = "./fixtures/1x1.png";
-    let conf = get_dummy_conf(CHECK_LAST_MINUTE, DUMMY_SEARCH_PATTERN.to_owned(), path.to_owned());
+    let conf = get_dummy_conf(forever(), DUMMY_SEARCH_PATTERN.to_owned(), path.to_owned());
+    let whitespaces_in_date = 3; // doesn't matter, should not be considered anyway
+    let oldest_ts = forever();
 
     // when
-    let res = run(&conf);
+    let res = search_file(path, &conf, whitespaces_in_date, oldest_ts);
 
     // then
-    let matches = 0;
     let files_searched = 0;
-    assert_eq!(res, Ok((matches, files_searched)));
+    assert_eq!(res, Err((SearchError::NotUtf8, files_searched)));
   }
 
   #[test]
   fn should_handle_utf8_file_content_correctly() {
     // given
     let (_file, path) = create_temp_file("2018-09-13 00:03:01 🐱");
-    let conf = get_dummy_conf(999999, "🐱".to_owned(), path);
+    let conf = get_dummy_conf(forever(), "🐱".to_owned(), path);
 
     // when
     let res = run(&conf);
@@ -529,8 +538,10 @@ mod tests {
   #[test]
   fn should_handle_files_with_lines_without_dates() {
     // given
-    let (_file, path) = create_temp_file("2018-09-13 00:03:01 foo\nsome\nsome\nsomefoo\n2018-09-13 00:03:01 bar\n");
-    let conf = get_dummy_conf(999999, "bar".to_owned(), path);
+    // one of the lines intentionally contains as many whitespaces as the
+    // valid lines which include a date.
+    let (_file, path) = create_temp_file("2018-09-13 00:03:01 foo\nsome\nsome some\nsome foo bar\n2018-09-13 00:03:01 bar\n");
+    let conf = get_dummy_conf(forever(), "bar".to_owned(), path);
 
     // when
     let res = run(&conf);
@@ -546,7 +557,7 @@ mod tests {
     // given
     let format = "%Y-%m-%d %H:%M:%S";
     let (_file, path) = create_temp_file("2018-09-13 00:01:51,079 foo\n2018-09-13 00:01:51,079 foobar\n");
-    let conf = get_dummy_conf_format(999999, "foo".to_owned(), path, format.to_owned(), 0);
+    let conf = get_dummy_conf_format(forever(), "foo".to_owned(), path, format.to_owned(), 0);
 
     // when
     let res = run(&conf);
@@ -643,7 +654,7 @@ mod tests {
   fn should_handle_file_age_correctly() {
     // given
     let (file, path) = create_temp_file("2018-09-13 00:03:01 foo");
-    let conf = get_dummy_conf(999999, "foo".to_owned(), path);
+    let conf = get_dummy_conf(forever(), "foo".to_owned(), path);
     let start_of_year = str_to_filetime("%Y%m%d%H%M", "201809130000");
 
     let path = file.path();
@@ -662,7 +673,7 @@ mod tests {
   fn should_search_matching_files() {
     // given
     // logfile.0 should also be searched
-    let conf = get_dummy_conf(999999, "foobar".to_owned(), "./fixtures/logfile".to_owned());
+    let conf = get_dummy_conf(forever(), "foobar".to_owned(), "./fixtures/logfile".to_owned());
 
     // when
     let res = run(&conf);
@@ -680,7 +691,7 @@ mod tests {
 
     // when
     let conf = Config::new(
-      999999,
+      forever(),
       "foobar".to_owned(),
       stdin,
       1,              // max_critical_matches
