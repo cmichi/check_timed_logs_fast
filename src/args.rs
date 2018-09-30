@@ -45,7 +45,7 @@ fn print_version() {
 
 // the selfmade parsing is necessary because the original plugin uses `-`
 // instead of `--` for the flags. the getopts crate only supports `--` though.
-pub fn parse() -> Config {
+pub fn parse() -> Result<Config, String> {
   let mut interval_to_check: u64 = 0;
   let mut search_pattern: String = String::from("");
   let mut logfile: String = String::from("");
@@ -53,8 +53,8 @@ pub fn parse() -> Config {
   let mut max_critical_matches = 1;
   let mut max_warning_matches = 1;
   let mut date_pattern = String::from("%b %d %H:%M:%S");
-  let mut timeposition = 0; // TODO
-  let mut debug = false; // TODO
+  let mut timeposition = 0;
+  let mut debug = false;
   let mut verbose = false;
 
   let args: Vec<String> = std::env::args().collect();
@@ -124,19 +124,6 @@ pub fn parse() -> Config {
     }
   }
 
-  if logfile.is_empty() {
-    eprintln!("no -logfile");
-    std::process::exit(3);
-  }
-  if search_pattern.is_empty() {
-    eprintln!("no -pattern");
-    std::process::exit(3);
-  }
-  if interval_to_check < 1 {
-    eprintln!("interval needs to be set and be >= 1");
-    std::process::exit(3);
-  }
-
   let conf = Config::new(
     interval_to_check,
     search_pattern,
@@ -148,6 +135,6 @@ pub fn parse() -> Config {
     timeposition,
     debug,
     verbose,
-  ).unwrap();
-  conf
+  )?;
+  Ok(conf)
 }

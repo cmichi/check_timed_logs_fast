@@ -5,7 +5,16 @@ use std::process::exit;
 mod args;
 
 fn main() {
-  let conf = args::parse();
+  let parse = args::parse();
+  let conf = match parse {
+    Err(err) => {
+      eprintln!("ERROR while parsing the arguments: {}.\nUse `-help` to show usage information.", err);
+      exit(1);
+    },
+    Ok(conf) => {
+      conf
+    }
+  };
 
   let res = check_timed_logs_fast::run(&conf);
   match res {
@@ -28,7 +37,7 @@ fn main() {
 
       if files_matched == 0 {
         eprintln!("UNKNOWN - There were no files matching the passed filename: \"{}\"",
-                  conf.filename);
+                  conf.logfile);
         exit(3);
       }
 

@@ -47,10 +47,56 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
 use glob::glob;
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum ConfigError {
+   LogfileRequired,
+   PatternRequired,
+   IntervalInvalid,
+   StdinUnsupported,
+}
+
+impl From<ConfigError> for String {
+  fn from(error: ConfigError) -> Self {
+    match error {
+      ConfigError::LogfileRequired => "no -logfile".to_owned(),
+      ConfigError::PatternRequired => "no -pattern".to_owned(),
+      ConfigError::IntervalInvalid => "interval needs to be set and be >= 1".to_owned(),
+      ConfigError::StdinUnsupported => "stdin as path is not supported".to_owned(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+enum SearchError {
+  NotFile,
+  EmptyFile,
+  NotUtf8,
+  TimestampTooOld,
+}
+
+impl From<SearchError> for String {
+  fn from(error: SearchError) -> Self {
+    match error {
+      SearchError::NotFile => "not a file".to_owned(),
+      SearchError::EmptyFile => "file empty".to_owned(),
+      SearchError::NotUtf8 => "file not utf8".to_owned(),
+      SearchError::TimestampTooOld => "timestamp in line too old".to_owned(),
+    }
+  }
+}
+
+/*
+impl fmt::Display for SearchError {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		self.description().fmt(f)
+	}
+}
+*/
+
 pub struct Config {
   pub interval_to_check: u64,
   pub search_pattern: String,
-  pub filename: String,
+  pub logfile: String,
 
   pub max_critical_matches: u64,
   pub max_warning_matches: u64,
@@ -65,7 +111,7 @@ impl Config {
   pub fn new(
     interval_to_check: u64,
     search_pattern: String,
-    filename: String,
+    logfile: String,
 
     max_critical_matches: u64,
     max_warning_matches: u64,
@@ -73,12 +119,19 @@ impl Config {
     timeposition: usize,
     debug: bool,
     verbose: bool,
-  ) -> Result<Config, String> {
-    // TODO the validation should go here and not in the parser
-    if filename == "-" {
-      return Err("stdin as path is not supported".to_owned());
+  ) -> Result<Config, ConfigError> {
+    if logfile.is_empty() {
+      return Err(ConfigError::LogfileRequired);
     }
-
+    if search_pattern.is_empty() {
+      return Err(ConfigError::PatternRequired);
+    }
+    if interval_to_check < 1 {
+      return Err(ConfigError::IntervalInvalid);
+    }
+    if logfile == "-" {
+      return Err(ConfigError::StdinUnsupported);
+    }
     if date_pattern.len() == 0 {
       date_pattern = String::from("%Y-%m-%d %H:%M:%S");
     }
@@ -86,7 +139,7 @@ impl Config {
     Ok(Config {
       interval_to_check,
       search_pattern: search_pattern.to_owned(),
-      filename,
+      logfile,
 
       max_critical_matches,
       max_warning_matches,
@@ -100,8 +153,8 @@ impl Config {
 }
 
 pub fn run(conf: &Config) -> Result<(u64, u64), String> {
-  let mut files_processed = 0;
-  let mut exp = conf.filename.to_owned();
+  let mut files_searched = 0;
+  let mut exp = conf.logfile.to_owned();
   let star = String::from("*");
   exp.push_str(&star);
 
@@ -132,67 +185,56 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
 
         if !check_file_age(&conf, p) {
           if conf.debug {
-            println!("skipping {:?} because too old", conf.filename);
+            println!("skipping {:?} because too old", conf.logfile);
           }
           continue; 
         }
 
-        let local_matches = process_file(p, &conf, whitespaces_in_date, oldest_ts);
+        let local_matches = search_file(p, &conf, whitespaces_in_date, oldest_ts);
         match local_matches {
           Ok(matches_in_file) => {
-            files_processed += 1;
+            files_searched += 1;
             matches += matches_in_file;
           },
           Err((err, matches_in_file)) => {
+						// an error can occur because e.g. the file is empty, not utf8 or
+						// because the timestamp of the line is too old. so we can
+						// just stop searching further and add the matches found so far.
+						if conf.debug {
+							let err: String = err.into();
+							eprintln!("ERROR while searching the file {}: {}
+												There were {} matches until the error appeared.", p, err, matches);
+						}
+
+						match err {
+							SearchError::TimestampTooOld => files_searched += 1,
+							_ => {},
+						}
+
             matches += matches_in_file;
-            continue; // typically because of non-ascii file
+            continue;
           }
         }
       },
       Err(e) => eprintln!("ERROR: {:?}", e),
     }
   }
-  Ok((matches, files_processed))
+  Ok((matches, files_searched))
 }
 
-fn get_oldest_allowed_utc_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
-  let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-  let now_unix_ts = since_the_epoch.as_secs();
-  let go_back_secs = 60 * conf.interval_to_check;
-
-  if go_back_secs > now_unix_ts {
-    0
-  } else {
-    now_unix_ts - go_back_secs
-  }
-}
-
-fn get_oldest_allowed_local_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
-  let oldest_ts_utc = get_oldest_allowed_utc_ts(conf, now);
-  let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(oldest_ts_utc as i64, 0); // TODO i64?!
-  let adjusted_date = adjust_to_local_tz(oldest_date_no_tz_offset);
-  get_timestamp_from_local(adjusted_date)
-}
-
-fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts: u64) -> Result<u64, (String, u64)> {
+fn search_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts: u64) -> Result<u64, (SearchError, u64)> {
   let mmap;
   let mut matches = 0;
 
   let file_in = File::open(path).expect("cannot open file");
   let metadata = file_in.metadata().expect("cannot get metadata");
   if !metadata.is_file() {
-      if conf.debug {
-        eprintln!("{} is not a file", path);
-      }
-      return Err(("not a file".to_owned(), 0));
+		return Err((SearchError::NotFile, 0));
   } else if metadata.len() > isize::max_value() as u64 {
     panic!("the file {} is too large to be safely mapped to memory:
             https://github.com/danburkert/memmap-rs/issues/69", path);
   } else if metadata.len() == 0 {
-    if conf.debug {
-      eprintln!("{} is empty", path);
-    }
-    return Err(("file empty".to_owned(), 0));
+    return Err((SearchError::EmptyFile, 0));
   } 
 
   let (file, len) = {
@@ -206,7 +248,7 @@ fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts
   while index >= -1 {
     if index == -1 || file[index as usize] == '\n' as u8 {
       let line = &file[(index + 1) as usize..last_printed as usize];
-      let is_match = process_line(line, whitespaces_in_date, oldest_ts, &conf);
+      let is_match = search_line(line, whitespaces_in_date, oldest_ts, &conf);
       match is_match {
         Ok(v) => {
           if v {
@@ -214,16 +256,7 @@ fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts
           }
         },
         Err(err) => {
-          if conf.debug {
-            eprintln!("ERROR while searching the file {}: {}
-                      There were {} matches until the error appeared.", path, err, matches);
-          }
-
-          // an error typically occurs because of trying to parse a binary file
-          // or because the timestamp of the line is too old. if something more
-          // serious would have happened we would already have panicked.
-          //return Err((err, matches));
-          return Ok(matches);
+					return Err((err, matches));
         }
       }
 
@@ -236,8 +269,7 @@ fn process_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts
   Ok(matches)
 }
 
-// TODO maybe better return Option<bool, None>, would be more semantically fitting
-fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, conf: &Config) -> Result<bool, String> {
+fn search_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, conf: &Config) -> Result<bool, SearchError> {
   if bytes.len() == 0 {
     return Ok(false);
   }
@@ -247,7 +279,7 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
       if conf.debug {
         eprintln!("skipping file because not utf8 parseable!");
       }
-      return Err("file not utf8".to_owned());
+      return Err(SearchError::NotUtf8);
   }
   let line = l.unwrap().trim();
   if line.len() == 0 {
@@ -255,7 +287,7 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
   }
 
   if conf.debug {
-    println!("processing line: {}", line);
+    println!("searching line: {}", line);
   }
 
   let split: Vec<&str> = line.split_whitespace().collect();
@@ -278,7 +310,7 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
 
       let ts_line = get_timestamp(date);
       if oldest_ts > ts_line {
-        return Err("timestamp in line too old".to_owned());
+        return Err(SearchError::TimestampTooOld);
       }
 
       let is_match = conf.re.captures_from_pos(&line, 0).unwrap();
@@ -292,7 +324,26 @@ fn process_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, 
   }
 }
 
-// checks if the file age is >= now - interval_to_check
+fn get_oldest_allowed_utc_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
+  let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+  let now_unix_ts = since_the_epoch.as_secs();
+  let go_back_secs = 60 * conf.interval_to_check;
+
+  if go_back_secs > now_unix_ts {
+    0
+  } else {
+    now_unix_ts - go_back_secs
+  }
+}
+
+fn get_oldest_allowed_local_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
+  let oldest_ts_utc = get_oldest_allowed_utc_ts(conf, now);
+  let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(oldest_ts_utc as i64, 0); // TODO i64?!
+  let adjusted_date = adjust_to_local_tz(oldest_date_no_tz_offset);
+  get_timestamp_from_local(adjusted_date)
+}
+
+/// check if the file age is >= now - interval_to_check
 fn check_file_age(conf: &Config, path: &str) -> bool {
   let secs_allowed = conf.interval_to_check * 60;
 
@@ -378,8 +429,8 @@ mod tests {
   use self::filetime::FileTime;
   use std::io::Write;
 
-  const EMPTY_SEARCH_PATTERN: &str = "";
-  const SOME_LOG_FILE: &str = "";
+  const DUMMY_SEARCH_PATTERN: &str = ".*";
+  const SOME_LOG_FILE: &str = "/tmp/some-file.log";
   const CHECK_LAST_MINUTE: u64 = 1;
 
   fn get_dummy_conf(interval_to_check: u64, search_pattern: String, logfile: String) -> Config {
@@ -463,7 +514,7 @@ mod tests {
                                             // could be flaky in corner cases.
     let interval_to_check: u64 = 1;
     let conf = get_dummy_conf(interval_to_check,
-                              EMPTY_SEARCH_PATTERN.to_owned(),
+                              DUMMY_SEARCH_PATTERN.to_owned(),
                               SOME_LOG_FILE.to_owned());
 
     // when
@@ -483,7 +534,7 @@ mod tests {
     let now = std::time::SystemTime::now();
     let interval_to_check: u64 = 13; // minutes
     let conf = get_dummy_conf(interval_to_check,
-                              EMPTY_SEARCH_PATTERN.to_owned(),
+                              DUMMY_SEARCH_PATTERN.to_owned(),
                               SOME_LOG_FILE.to_owned());
 
     // when
@@ -524,8 +575,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
 
   }
   #[test]
@@ -554,38 +605,38 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
   fn should_handle_empty_file_correctly() {
     // given
     let (_file, path) = create_temp_file("");
-    let conf = get_dummy_conf(CHECK_LAST_MINUTE, EMPTY_SEARCH_PATTERN.to_owned(), path);
+    let conf = get_dummy_conf(CHECK_LAST_MINUTE, DUMMY_SEARCH_PATTERN.to_owned(), path);
 
     // when
     let res = run(&conf);
 
     // then
     let matches = 0;
-    let files_processed = 0;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 0;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
   fn should_skip_binary_files() {
     // given
     let path = "./fixtures/1x1.png";
-    let conf = get_dummy_conf(CHECK_LAST_MINUTE, EMPTY_SEARCH_PATTERN.to_owned(), path.to_owned());
+    let conf = get_dummy_conf(CHECK_LAST_MINUTE, DUMMY_SEARCH_PATTERN.to_owned(), path.to_owned());
 
     // when
     let res = run(&conf);
 
     // then
     let matches = 0;
-    let files_processed = 0;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 0;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -599,8 +650,8 @@ mod tests {
 
     // then
     let matches = 1;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -614,8 +665,8 @@ mod tests {
 
     // then
     let matches = 1;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -630,8 +681,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -661,8 +712,8 @@ mod tests {
     // then
     // the entry which was five minutes ago should not be matched
     let matches = 1;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -692,8 +743,8 @@ mod tests {
     // then
     // the entry which was five minutes ago should not be matched
     let matches = 1;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -712,8 +763,8 @@ mod tests {
 
     // then
     let matches = 0;
-    let files_processed = 0;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 0;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -731,8 +782,8 @@ mod tests {
 
     // then
     let matches = 1;
-    let files_processed = 1;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 1;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
@@ -746,8 +797,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_processed = 2;
-    assert_eq!(res, Ok((matches, files_processed)));
+    let files_searched = 2;
+    assert_eq!(res, Ok((matches, files_searched)));
   }
 
   #[test]
