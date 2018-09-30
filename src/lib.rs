@@ -75,7 +75,7 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
   let mut matches = 0;
 
   let pattern_spaces: Vec<&str> = conf.date_pattern.split_whitespace().collect();
-  let whitespaces_in_date = pattern_spaces.len(); // = count of whitespaces
+  let whitespaces_in_date = pattern_spaces.len();
   
   if conf.debug {
     println!("looking for files matching {}", exp);
