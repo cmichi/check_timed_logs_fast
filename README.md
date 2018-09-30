@@ -5,9 +5,6 @@
 [![Crates.io](https://img.shields.io/crates/v/check_timed_logs_fast.svg)](https://crates.io/crates/check_timed_logs_fast)
 [![docs.rs](https://docs.rs/check_timed_logs_fast/badge.svg)](https://docs.rs/check_timed_logs_fast)
 
-__Project Status:__ It works, I'm working on adding more tests and structuring
-the code better.
-
 This is a blazingly fast reimplementation of the [check_timed_logs](https://exchange.nagios.org/directory/Plugins/Log-Files/check_timed_logs/details)
 nagios plugin in Rust (the original is in Perl). The API stayed the same,
 so you can just replace the original perl script with the binary.
