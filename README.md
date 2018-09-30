@@ -65,8 +65,9 @@ use a (slower) crate which supports these features.
 
 	cargo install check_timed_logs_fast
 
-	# if there is >= 1 occurrence of either timeout or closed then warn.
-	# if there are >= 5 issue a critical incident.
+	# a warning should be issued if there is >= 1 occurrence of either the string
+	# "timeout" or "closed" in the last ten minutes. if there are >= 5 matches
+	# issue a critical incident.
 	check_timed_logs_fast -logfile /var/log/app.log -pattern "timeout|closed" -interval 10 -w 1 -c 5
 
 You can use MUSL to compile a generic, static binary for some unknown linux:
