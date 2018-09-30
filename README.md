@@ -3,8 +3,7 @@
 [![Build Status](https://travis-ci.org/cmichi/check_timed_logs_fast.svg?branch=master)](https://travis-ci.org/cmichi/check_timed_logs_fast)
 [![codecov](https://codecov.io/gh/cmichi/check_timed_logs_fast/branch/master/graph/badge.svg)](https://codecov.io/gh/cmichi/check_timed_logs_fast)
 [![Crates.io](https://img.shields.io/crates/v/check_timed_logs_fast.svg)](https://crates.io/crates/check_timed_logs_fast)
-
-[Documentation](https://cmichi.github.io/check_timed_logs_fast/check_timed_logs_fast/index.html)
+[![docs.rs](https://docs.rs/check_timed_logs_fast/badge.svg)](https://docs.rs/check_timed_logs_fast)
 
 __Project Status:__ It works, I'm working on adding more tests and structuring
 the code better.
@@ -69,8 +68,8 @@ use a (slower) crate which supports these features.
 
 	cargo install check_timed_logs_fast
 
-	# if there is >= 1 occurrence of either timeout or closed then
-	# warn. if there are >= 5 issue a critical incident.
+	# if there is >= 1 occurrence of either timeout or closed then warn.
+	# if there are >= 5 issue a critical incident.
 	check_timed_logs_fast -logfile /var/log/app.log -pattern "timeout|closed" -interval 10 -w 1 -c 5
 
 You can use MUSL to compile a generic, static binary for some unknown linux:
