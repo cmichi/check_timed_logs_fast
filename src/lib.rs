@@ -31,21 +31,21 @@
 //! }
 //! ```
 
-extern crate memmap;
 extern crate chrono;
-extern crate time;
-extern crate glob;
 extern crate fancy_regex;
-
-use std::fs::File;
-use std::str;
-use memmap::Mmap;
-use fancy_regex::Regex;
+extern crate glob;
+extern crate memmap;
+extern crate time;
 
 use chrono::prelude::*;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::fs;
+use fancy_regex::Regex;
 use glob::glob;
+use memmap::Mmap;
+use std::fs::File;
+use std::str;
+use std::time::SystemTime;
+
+mod utils;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum ConfigError {
@@ -84,14 +84,6 @@ impl From<SearchError> for String {
     }
   }
 }
-
-/*
-impl fmt::Display for SearchError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		self.description().fmt(f)
-	}
-}
-*/
 
 pub struct Config {
   pub interval_to_check: u64,
@@ -169,11 +161,11 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
 
   // the timestamp is adjusted to local time
   let now = SystemTime::now();
-  let oldest_ts = get_oldest_allowed_local_ts(conf, now);
+  let oldest_ts = utils::get_oldest_allowed_local_ts(conf, now);
 
   if conf.debug {
-    let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(get_oldest_allowed_utc_ts(conf, now) as i64, 0);
-    let adjusted_date = NaiveDateTime::from_timestamp(get_oldest_allowed_local_ts(conf, now) as i64, 0);
+    let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(utils::get_oldest_allowed_utc_ts(conf, now) as i64, 0);
+    let adjusted_date = NaiveDateTime::from_timestamp(utils::get_oldest_allowed_local_ts(conf, now) as i64, 0);
     println!("oldest allowed date in utc: {} and with tz offset: {}", oldest_date_no_tz_offset, adjusted_date);
   }
   
@@ -183,7 +175,7 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
       Ok(path) => {
         let p = path.to_str().expect("path not available");
 
-        if !check_file_age(&conf, p) {
+        if !utils::check_file_age(&conf, p) {
           if conf.debug {
             println!("skipping {:?} because too old", conf.logfile);
           }
@@ -197,19 +189,19 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
             matches += matches_in_file;
           },
           Err((err, matches_in_file)) => {
-						// an error can occur because e.g. the file is empty, not utf8 or
-						// because the timestamp of the line is too old. so we can
-						// just stop searching further and add the matches found so far.
-						if conf.debug {
-							let err: String = err.into();
-							eprintln!("ERROR while searching the file {}: {}
-												There were {} matches until the error appeared.", p, err, matches);
-						}
+            // an error can occur because e.g. the file is empty, not utf8 or
+            // because the timestamp of the line is too old. so we can
+            // just stop searching further and add the matches found so far.
+            if conf.debug {
+              let err: String = err.into();
+              eprintln!("ERROR while searching the file {}: {}
+                        There were {} matches until the error appeared.", p, err, matches);
+            }
 
-						match err {
-							SearchError::TimestampTooOld => files_searched += 1,
-							_ => {},
-						}
+            match err {
+              SearchError::TimestampTooOld => files_searched += 1,
+              _ => {},
+            }
 
             matches += matches_in_file;
             continue;
@@ -229,7 +221,7 @@ fn search_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts:
   let file_in = File::open(path).expect("cannot open file");
   let metadata = file_in.metadata().expect("cannot get metadata");
   if !metadata.is_file() {
-		return Err((SearchError::NotFile, 0));
+    return Err((SearchError::NotFile, 0));
   } else if metadata.len() > isize::max_value() as u64 {
     panic!("the file {} is too large to be safely mapped to memory:
             https://github.com/danburkert/memmap-rs/issues/69", path);
@@ -256,7 +248,7 @@ fn search_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts:
           }
         },
         Err(err) => {
-					return Err((err, matches));
+          return Err((err, matches));
         }
       }
 
@@ -300,7 +292,7 @@ fn search_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, c
     }
   };
 
-  let date = parse_date(&datefields, &conf.date_pattern);
+  let date = utils::parse_date(&datefields, &conf.date_pattern);
   match date {
     None => Ok(false),
     Some(date) => {
@@ -308,7 +300,7 @@ fn search_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, c
         println!("parsed {} to date {}", datefields, date);
       }
 
-      let ts_line = get_timestamp(date);
+      let ts_line = utils::get_timestamp(date);
       if oldest_ts > ts_line {
         return Err(SearchError::TimestampTooOld);
       }
@@ -324,114 +316,30 @@ fn search_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, c
   }
 }
 
-fn get_oldest_allowed_utc_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
-  let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-  let now_unix_ts = since_the_epoch.as_secs();
-  let go_back_secs = 60 * conf.interval_to_check;
-
-  if go_back_secs > now_unix_ts {
-    0
-  } else {
-    now_unix_ts - go_back_secs
-  }
-}
-
-fn get_oldest_allowed_local_ts(conf: &Config, now: std::time::SystemTime) -> u64 {
-  let oldest_ts_utc = get_oldest_allowed_utc_ts(conf, now);
-  let oldest_date_no_tz_offset = NaiveDateTime::from_timestamp(oldest_ts_utc as i64, 0); // TODO i64?!
-  let adjusted_date = adjust_to_local_tz(oldest_date_no_tz_offset);
-  get_timestamp_from_local(adjusted_date)
-}
-
-/// check if the file age is >= now - interval_to_check
-fn check_file_age(conf: &Config, path: &str) -> bool {
-  let secs_allowed = conf.interval_to_check * 60;
-
-  let attr = fs::metadata(&path).expect("cannot get metadata");
-  let last_modified = attr.modified().unwrap();
-  let elapsed_secs = last_modified.elapsed().unwrap().as_secs();
-
-  if conf.debug {
-    println!("found file {} is {} seconds old", path, elapsed_secs);
-  }
-
-  if elapsed_secs <= secs_allowed {
-    return true;
-  }
-
-  false
-}
-
-fn adjust_to_local_tz(date: NaiveDateTime) -> DateTime<chrono::Local> {
-  let dt = chrono::Local::now();
-  let local_offset = dt.offset();
-
-  // convert from utc to local time
-  let off = TimeZone::from_offset(local_offset);
-  DateTime::<chrono::Local>::from_utc(date, off)
-}
-
-fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
-  let p = match Utc.datetime_from_str(&datefields, pattern) {
-    Ok(v) => v,
-    Err(e) => {
-      // there are a few things we can try to fix the error
-      let err_desc = e.to_string();
-      if err_desc == "trailing input" {
-        // the original check_timed_logs.pl would just ignore the trailing input,
-        // but unfortunately chrono does not support ignoring trailing input.
-        // hence this hack.
-        let comma_pos = datefields.find(',').unwrap_or(datefields.len());
-        let (before_comma, _) = datefields.split_at(comma_pos);
-        return parse_date(&before_comma, pattern);
-      }
-
-      // try prepending the year, for many logs the year is missing
-      let mut new_pattern = String::from("%Y ");
-      new_pattern.push_str(&pattern);
-
-      let mut datestring = String::from("2018 ");
-      datestring.push_str(&datefields);
-
-      match Utc.datetime_from_str(&datestring, &new_pattern) {
-        Ok(v) => v,
-        Err(_) => {
-          // if it's still not possible to parse a date from the line we just
-          // ignore the line.
-          // eprintln!("This error appeared when parsing the date in the log
-          //            file with the provided pattern: {:?}. The date fields:
-          //            {:?}, the pattern: {:?}.", e, datefields, pattern);
-          return None;
-        },
-      }
-    },
-  };
-
-  Some(p)
-}
-
-fn get_timestamp_from_local(date: DateTime<chrono::Local>) -> u64 {
-  date.naive_local().timestamp() as u64
-}
-
-fn get_timestamp(date: DateTime<chrono::Utc>) -> u64 {
-  date.naive_local().timestamp() as u64
-}
-
 #[cfg(test)]
 mod tests {
-  extern crate tempfile;
   extern crate filetime;
+  extern crate tempfile;
 
   use super::*;
-  use time as t;
   use self::tempfile::NamedTempFile;
   use self::filetime::FileTime;
   use std::io::Write;
+  use std::time::UNIX_EPOCH;
+  use time as t;
+  use utils::*;
 
   const DUMMY_SEARCH_PATTERN: &str = ".*";
   const SOME_LOG_FILE: &str = "/tmp/some-file.log";
   const CHECK_LAST_MINUTE: u64 = 1;
+
+  // Adjusts for local timezone
+  fn str_to_filetime(format: &str, s: &str) -> FileTime {
+    let mut tm = time::strptime(s, format).unwrap();
+    tm.tm_utcoff = time::now().tm_utcoff;
+    let ts = tm.to_timespec();
+    FileTime::from_unix_time(ts.sec as i64, ts.nsec as u32)
+  }
 
   fn get_dummy_conf(interval_to_check: u64, search_pattern: String, logfile: String) -> Config {
     get_dummy_conf_format(interval_to_check, search_pattern, logfile, "".to_owned(), 0)
@@ -469,42 +377,6 @@ mod tests {
   fn reset_tz() {
     std::env::set_var("TZ", "Africa/Abidjan"); // Africa/Abidjan = +00:00 UTC Offset
     t::tzset();
-  }
-
-  // Adjusts for local timezone
-  fn str_to_filetime(format: &str, s: &str) -> FileTime {
-    let mut tm = time::strptime(s, format).unwrap();
-    tm.tm_utcoff = time::now().tm_utcoff;
-    let ts = tm.to_timespec();
-    FileTime::from_unix_time(ts.sec as i64, ts.nsec as u32)
-  }
-
-  #[test]
-  fn should_prepend_current_year() {
-    // given
-    let pattern = "%b %d %H:%M:%S";
-    let datefields = "Aug 8 11:28:21";
-
-    // when
-    let date = parse_date(datefields, pattern);
-
-    // then
-    let ts = date.unwrap().timestamp() as u64;
-    assert_eq!(ts, 1533727701);
-  }
-
-  #[test]
-  fn should_not_prepend_year_if_already_present() {
-    // given
-    let pattern = "%Y %b %d %H:%M:%S";
-    let datefields = "2018 Aug 8 11:28:21";
-
-    // when
-    let date = parse_date(datefields, pattern);
-
-    // then
-    let ts = date.unwrap().timestamp() as u64;
-    assert_eq!(ts, 1533727701);
   }
 
   #[test]
