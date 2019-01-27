@@ -80,22 +80,21 @@ You can use MUSL to compile a generic, static binary for some unknown linux:
 
 Build the package like this:
 
-* Clone from https://github.com/cmichi/check_timed_logs_fast and compile with
-`cargo build --release --target=x86_64-unknown-linux-musl`.
-* The resulting executable is `target/x86_64-unknown-linux-musl/release/check_timed_logs_fast`.
-* If you `cd target/x86_64-unknown-linux-musl/release/` you can build the debian
-package with the `fpm` command below.
+Clone and compile with `cargo build --release --target=x86_64-unknown-linux-musl`.
+The resulting executable is `target/x86_64-unknown-linux-musl/release/check_timed_logs_fast`.
+If you `cd target/x86_64-unknown-linux-musl/release/` you can build the debian
+package with this `fpm` command:
 
 	fpm -s dir \
-		 -t deb \
-		 --iteration 1plugins1 \
-		 --architecture all \
-		 --deb-ignore-iteration-in-dependencies \
-		 --maintainer "Michael Mueller <mich@elmueller.net>" \
-		 --name check_timed_logs_fast \
-		 --verbose \
-		 --version 0.0.8 \
-		 ./check_timed_logs_fast=/usr/lib/nagios/plugins/check_timed_logs_fast
+		-t deb \
+		--iteration 1plugins1 \
+		--architecture all \
+		--deb-ignore-iteration-in-dependencies \
+		--maintainer "Michael Mueller <mich@elmueller.net>" \
+		--name check_timed_logs_fast \
+		--verbose \
+		--version 0.0.8 \
+		./check_timed_logs_fast=/usr/lib/nagios/plugins/check_timed_logs_fast
 
 
 ## License
