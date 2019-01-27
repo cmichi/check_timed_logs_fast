@@ -67,7 +67,7 @@ impl From<SearchError> for String {
 }
 
 pub fn run(conf: &Config) -> Result<(u64, u64), String> {
-  let mut files_searched = 0;
+  let mut files_matched = 0;
   let mut exp = conf.logfile.to_owned();
   let star = String::from("*");
   exp.push_str(&star);
@@ -98,6 +98,7 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
         let p = path.to_str().expect("path not available");
 
         if !utils::check_file_age(&conf, p) {
+          files_matched += 1;
           if conf.debug {
             println!("skipping {:?} because too old", conf.logfile);
           }
@@ -107,7 +108,7 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
         let local_matches = search_file(p, &conf, whitespaces_in_date, oldest_ts);
         match local_matches {
           Ok(matches_in_file) => {
-            files_searched += 1;
+            files_matched += 1;
             matches += matches_in_file;
           },
           Err((err, matches_in_file)) => {
@@ -116,12 +117,12 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
             // just stop searching further and add the matches found so far.
             if conf.debug {
               let err: String = err.into();
-              eprintln!("ERROR while searching the file {}: {}
+              println!("ERROR while searching the file {}: {}
                         There were {} matches until the error appeared.", p, err, matches);
             }
 
             match err {
-              SearchError::TimestampTooOld => files_searched += 1,
+              SearchError::TimestampTooOld => files_matched += 1,
               _ => {},
             }
 
@@ -130,10 +131,10 @@ pub fn run(conf: &Config) -> Result<(u64, u64), String> {
           }
         }
       },
-      Err(e) => eprintln!("ERROR: {:?}", e),
+      Err(e) => println!("ERROR: {:?}", e),
     }
   }
-  Ok((matches, files_searched))
+  Ok((matches, files_matched))
 }
 
 fn search_file(path: &str, conf: &Config, whitespaces_in_date: usize, oldest_ts: u64) -> Result<u64, (SearchError, u64)> {
@@ -191,7 +192,7 @@ fn search_line(bytes: &[u8], whitespaces_in_datefields: usize, oldest_ts: u64, c
   let l = str::from_utf8(bytes);
   if l.is_err() {
       if conf.debug {
-        eprintln!("skipping file because not utf8 parseable!");
+        println!("skipping file because not utf8 parseable!");
       }
       return Err(SearchError::NotUtf8);
   }
@@ -377,8 +378,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
 
   }
   #[test]
@@ -407,8 +408,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -422,8 +423,8 @@ mod tests {
 
     // then
     let matches = 0;
-    let files_searched = 0;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 0;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -438,8 +439,8 @@ mod tests {
     let res = search_file(path, &conf, whitespaces_in_date, oldest_ts);
 
     // then
-    let files_searched = 0;
-    assert_eq!(res, Err((SearchError::NotUtf8, files_searched)));
+    let files_matched = 0;
+    assert_eq!(res, Err((SearchError::NotUtf8, files_matched)));
   }
 
   #[test]
@@ -453,8 +454,8 @@ mod tests {
 
     // then
     let matches = 1;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -470,8 +471,8 @@ mod tests {
 
     // then
     let matches = 1;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -486,8 +487,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -517,8 +518,8 @@ mod tests {
     // then
     // the entry which was five minutes ago should not be matched
     let matches = 1;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -548,8 +549,8 @@ mod tests {
     // then
     // the entry which was five minutes ago should not be matched
     let matches = 1;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -568,8 +569,8 @@ mod tests {
 
     // then
     let matches = 0;
-    let files_searched = 0;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -587,8 +588,8 @@ mod tests {
 
     // then
     let matches = 1;
-    let files_searched = 1;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 1;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]
@@ -602,8 +603,8 @@ mod tests {
 
     // then
     let matches = 2;
-    let files_searched = 2;
-    assert_eq!(res, Ok((matches, files_searched)));
+    let files_matched = 2;
+    assert_eq!(res, Ok((matches, files_matched)));
   }
 
   #[test]

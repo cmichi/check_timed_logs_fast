@@ -59,7 +59,17 @@ pub fn parse() -> Result<Config, String> {
 
   let args: Vec<String> = std::env::args().collect();
   let mut prior_arg = ""; // TODO something cleaner, maybe not build a string here
-  for arg in args.iter().skip(1).map(|s| s.as_str()) {
+  let mut curr_arg = 0;
+  for mut arg in args.iter().skip(1).map(|s| s.as_str()) {
+    // nagios appends `$` when executing nrpe commands, we need to strip this.
+    // we substract arg.len()-1 to get the index of the last element
+    // and another -1 because we skipped the first element in args for
+    // this for loop (since it's the command name).
+    let last_arg = args.len() - 2;
+    if curr_arg == last_arg && arg.ends_with('$') {
+      arg = arg.trim_right_matches('$');
+    }
+
     match arg {
       "-h" | "-help" => {
           print_usage(&args[0]);
@@ -87,20 +97,20 @@ pub fn parse() -> Result<Config, String> {
           },
           "-i" | "-interval" => {
             interval_to_check = arg.parse().unwrap_or_else(|e| {
-              eprintln!("ERROR: \"-interval {}\" can not be parsed due to {:?}", arg, e);
+              println!("ERROR: \"-interval {}\" can not be parsed due to {:?}", arg, e);
               std::process::exit(3);
             });
           },
         
           "-w" | "-warning" => {
             max_warning_matches = arg.parse().unwrap_or_else(|e| {
-              eprintln!("ERROR: \"-warning {}\" can not be parsed due to {:?}", arg, e);
+              println!("ERROR: \"-warning {}\" can not be parsed due to {:?}", arg, e);
               std::process::exit(3);
             });
           },
           "-c" | "-critical" => {
             max_critical_matches = arg.parse().unwrap_or_else(|e| {
-              eprintln!("ERROR: \"-critical {}\" can not be parsed due to {:?}", arg, e);
+              println!("ERROR: \"-critical {}\" can not be parsed due to {:?}", arg, e);
               std::process::exit(3);
             });
           },
@@ -109,7 +119,7 @@ pub fn parse() -> Result<Config, String> {
           },
           "-timeposition" => {
             timeposition = arg.parse().unwrap_or_else(|e| {
-              eprintln!("ERROR: \"-timeposition {}\" can not be parsed due to {:?}", arg, e);
+              println!("ERROR: \"-timeposition {}\" can not be parsed due to {:?}", arg, e);
               std::process::exit(3);
             });
           },
@@ -122,6 +132,7 @@ pub fn parse() -> Result<Config, String> {
         prior_arg = arg;
       },
     }
+    curr_arg += 1;
   }
 
   let conf = Config::new(
