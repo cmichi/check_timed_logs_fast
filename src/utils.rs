@@ -73,7 +73,8 @@ pub fn parse_date(datefields: &str, pattern: &str) -> Option<DateTime<Utc>> {
       let mut new_pattern = String::from("%Y ");
       new_pattern.push_str(&pattern);
 
-      let mut datestring = String::from("2018 ");
+      let current_year = Utc::now().year();
+      let mut datestring = String::from(format!("{} ", current_year));
       datestring.push_str(&datefields);
 
       match Utc.datetime_from_str(&datestring, &new_pattern) {
@@ -112,8 +113,10 @@ mod tests {
     let date = parse_date(datefields, pattern);
 
     // then
-    let ts = date.unwrap().timestamp() as u64;
-    assert_eq!(ts, 1533727701);
+    let parsed_ts = date.unwrap().timestamp() as u64;
+    let current_year = Utc::now().year();
+    let current_ts = Utc.ymd(current_year, 8, 8).and_hms(11, 28, 21).timestamp() as u64;
+    assert_eq!(parsed_ts, current_ts);
   }
 
   #[test]
