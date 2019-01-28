@@ -291,7 +291,10 @@ mod tests {
     (file, path)
   }
 
-  /// returns approximately the minutes since unix epoch
+  /// returns approximately the minutes since unix epoch.
+  /// we return a large value here, because this value will be used as
+  /// the interval to check -- i.e. a large value means log entries
+  /// which are valid go back further into the past.
   fn forever() -> u64 {
     // we subtract the tz offset for los angeles (-7h) because some
     // of the tests use that tz and it is sufficient to return a
