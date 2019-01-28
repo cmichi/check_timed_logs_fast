@@ -296,10 +296,10 @@ mod tests {
   /// the interval to check -- i.e. a large value means log entries
   /// which are valid go back further into the past.
   fn forever() -> u64 {
-    // we subtract the tz offset for los angeles (-7h) because some
+    // we subtract the tz offset for los angeles (-8h) because some
     // of the tests use that tz and it is sufficient to return a
     // very old timestamp from this function.
-    (get_now_secs() / 60) - (7 * 60)
+    (get_now_secs() / 60) - (8 * 60)
   }
 
   fn get_now_secs() -> u64 {
@@ -351,7 +351,7 @@ mod tests {
     // `current utc - interval_to_check`, but rather the current
     // time adjusted to `local tz - interval_to_check`.
     let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    let offset = 7 * 60 * 60; // 7 hours is the timezone offset from utc to los angeles
+    let offset = 8 * 60 * 60; // 8 hours is the timezone offset from utc to los angeles
     assert_eq!(oldest_ts, since_the_epoch.as_secs() - (interval_to_check * 60) - offset);
   }
 
